@@ -274,6 +274,12 @@ def autoprueba_ventana(registro: Path) -> int:
     with tempfile.TemporaryDirectory(prefix="autoprueba_ventana_") as tmp:
         app = Aplicacion(Path(tmp) / "Auditor XPE", con_libreoffice=False)
         servidor = crear_servidor(app, 0)
+        peticiones = []
+        base = servidor.RequestHandlerClass
+        servidor.RequestHandlerClass = type(
+            "ManejadorAnotado", (base,),
+            {"log_message": lambda self, formato, *args: peticiones.append(formato % args)},
+        )
         threading.Thread(target=servidor.serve_forever, daemon=True).start()
         ventana = webview.create_window("Auditor XPE (autoprueba)", f"http://127.0.0.1:{servidor.server_address[1]}/")
 
@@ -287,12 +293,21 @@ def autoprueba_ventana(registro: Path) -> int:
 
         def probar():
             try:
-                cargo = esperar("!!document.querySelector('#zona-carga')", 60)
+                cargo = esperar("document.body && document.body.dataset.listo === '1'", 60)
                 anotar(f"Interfaz cargada en la ventana: {cargo}")
                 ventana.evaluate_js("document.querySelector('#btn-ejemplo').click()")
                 revision = esperar("!document.querySelector('#vista-revision').hidden", 120)
                 n = ventana.evaluate_js("document.querySelectorAll('.hallazgo').length")
                 anotar(f"Vista de revisión: {revision}; tarjetas de hallazgos: {n}")
+                if not revision:
+                    estado = ventana.evaluate_js(
+                        "JSON.stringify({vista: [...document.querySelectorAll('.vista')].filter(v => !v.hidden)"
+                        ".map(v => v.id), error: document.querySelector('#error-inicio').textContent,"
+                        " avisos: document.querySelector('#avisos').textContent,"
+                        " pasos: document.querySelector('#progreso-pasos').textContent})"
+                    )
+                    anotar(f"Estado de la interfaz: {estado}")
+                    anotar("Peticiones recibidas: " + ", ".join(peticiones[-15:]))
                 resultado["ok"] = bool(cargo and revision and n)
             except Exception:
                 anotar(traceback.format_exc())

@@ -84,8 +84,7 @@ function claseEstado(estado) {
 }
 
 // ------------------------------------------------------------------ inicio
-async function iniciar() {
-  mostrarVista("inicio");
+async function cargarInfo() {
   try {
     const info = await api("GET", "/api/info");
     $("#pie-info").innerHTML = `Versión ${esc(info.version)} · Los resultados se guardan en ${esc(info.carpeta)}
@@ -95,7 +94,12 @@ async function iniciar() {
   } catch (e) {
     /* sin información no pasa nada */
   }
-  cargarRecientes();
+}
+
+// Los botones se conectan antes de cualquier consulta al servidor: si la primera tarda,
+// la interfaz igual responde.
+function iniciar() {
+  mostrarVista("inicio");
   const zona = $("#zona-carga");
   $("#archivo").addEventListener("change", (ev) => ev.target.files[0] && subir(ev.target.files[0]));
   zona.addEventListener("keydown", (ev) => (ev.key === "Enter" || ev.key === " ") && $("#archivo").click());
@@ -160,6 +164,9 @@ async function iniciar() {
   });
   setInterval(() => api("POST", "/api/ping").catch(() => {}), 30000);
   api("POST", "/api/ping").catch(() => {});
+  cargarInfo();
+  cargarRecientes();
+  document.body.dataset.listo = "1";
 }
 
 async function cargarRecientes() {
