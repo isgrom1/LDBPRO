@@ -49,6 +49,7 @@ class Cambio:
     valor_anterior: object
     valor_nuevo: object
     reglas: list[str] = field(default_factory=list)
+    reemplaza_formula: bool = False
 
 
 def consolidar_cambios(libro: Libro, hallazgos: list[Hallazgo]) -> tuple[list[Cambio], list[str]]:
@@ -88,7 +89,10 @@ def consolidar_cambios(libro: Libro, hallazgos: list[Hallazgo]) -> tuple[list[Ca
 def aplicar_en_memoria(libro: Libro, cambios: list[Cambio]) -> Libro:
     nuevo = libro.copia()
     for c in cambios:
-        nuevo.tabla(c.hoja).valores.at[c.fila, c.clave] = c.valor_nuevo
+        t = nuevo.tabla(c.hoja)
+        t.valores.at[c.fila, c.clave] = c.valor_nuevo
+        t.es_formula.at[c.fila, c.clave] = False  # un valor escrito a mano reemplaza la fórmula
+        t.formulas.at[c.fila, c.clave] = None
     return nuevo
 
 

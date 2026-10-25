@@ -1,0 +1,117 @@
+"""Decisiones del usuario sobre la planilla de ejemplo (no necesita la planilla real)."""
+
+from __future__ import annotations
+
+import csv
+import warnings
+import zipfile
+
+import openpyxl
+import pytest
+
+from auditor.config import cargar_config
+from auditor.demo import crear_planilla_demo
+from auditor.sesion import (
+    ErrorDecision,
+    analizar,
+    cambios_con_decisiones,
+    generar,
+    preparar_decision,
+    proyectar,
+)
+
+
+@pytest.fixture(scope="module")
+def analisis(tmp_path_factory):
+    carpeta = tmp_path_factory.mktemp("demo")
+    ruta = crear_planilla_demo(carpeta / "planilla_ejemplo.xlsx")
+    return analizar(ruta, cargar_config(), carpeta, informar=lambda *a: None)
+
+
+def buscar(analisis, regla, celda=None):
+    return next(h for h in analisis.antes if h.id_regla == regla and (celda is None or h.celda == celda))
+
+
+def test_la_demo_muestra_errores_de_todas_las_familias(analisis):
+    reglas = {h.id_regla for h in analisis.antes}
+    esperadas = {"E02", "E03", "E04", "E05", "E07", "E08", "E09", "E11", "E12", "E13", "R01", "R02", "R03",
+                 "R04", "R05", "R06", "R08", "R09", "R10", "R12", "R13", "R14", "R15", "R16", "R17", "R18",
+                 "R19", "R20", "R21", "R22", "R23", "B01", "T01"}
+    assert esperadas <= reglas, esperadas - reglas
+    assert not [h for h in analisis.antes if h.id_regla == "ERROR"]
+    assert analisis.puntaje_despues.indice > analisis.puntaje_antes.indice
+
+
+def test_acciones_sugeridas(analisis):
+    assert [a.etiqueta for a in buscar(analisis, "R06").acciones] == ["Poner 1"]
+    assert buscar(analisis, "E03", "F6").acciones[0].valor == "Matorral esclerófilo"
+    r20 = buscar(analisis, "R20")
+    assert (r20.acciones[0].hoja, r20.acciones[0].valor) == ("Estaciones", 1)
+    assert "Sapo de Atacama" in [a.valor for a in buscar(analisis, "R02").acciones]
+    assert buscar(analisis, "R13").opciones[0] == "Cámara trampa"
+
+
+def test_decisiones_validas_e_invalidas(analisis):
+    r06 = buscar(analisis, "R06")
+    d = preparar_decision(analisis, r06, {"tipo": "valor", "texto": " 2 ", "nota": "contados en terreno"})
+    assert (d.valor, d.celda, d.nota) == (2, r06.celda, "contados en terreno")
+    with pytest.raises(ErrorDecision, match="no es un número"):
+        preparar_decision(analisis, r06, {"tipo": "valor", "texto": "muchos"})
+    with pytest.raises(ErrorDecision, match="fórmula"):
+        preparar_decision(analisis, r06, {"tipo": "valor", "texto": "x", "hoja": "Registros", "celda": "AE10"})
+    with pytest.raises(ErrorDecision):
+        preparar_decision(analisis, buscar(analisis, "R11"), {"tipo": "valor", "texto": "1"})
+    fecha = preparar_decision(analisis, buscar(analisis, "R09"), {"tipo": "valor", "texto": "16-10-2026"})
+    assert fecha.valor == 46311
+
+
+def test_decisiones_cambian_los_cambios(analisis):
+    r03 = buscar(analisis, "R03", "AD12")
+    r20 = buscar(analisis, "R20")
+    decisiones = {
+        r03.clave(): preparar_decision(analisis, r03, {"tipo": "sin_auto"}),
+        r20.clave(): preparar_decision(analisis, r20, {"tipo": "accion", "indice": 0}),
+        buscar(analisis, "R06").clave(): preparar_decision(analisis, buscar(analisis, "R06"), {"tipo": "accion", "indice": 0}),
+    }
+    cambios, resueltos = cambios_con_decisiones(analisis, decisiones)
+    celdas = {(c.hoja, c.celda): c for c in cambios}
+    assert ("Registros", "AD12") not in celdas  # auto-corrección rechazada
+    assert ("Registros", "AD13") in celdas  # la otra sigue
+    assert celdas[(r20.acciones[0].hoja, r20.acciones[0].celda)].valor_nuevo == 1
+    assert celdas[("Registros", buscar(analisis, "R06").celda)].reglas == ["MANUAL:R06"]
+    assert r03.clave() not in resueltos and r20.clave() in resueltos
+
+
+def test_generar_con_decisiones(analisis, tmp_path):
+    r14 = buscar(analisis, "R14")  # Directo/Indirecto: celda con fórmula compartida que se puede sobrescribir
+    r15 = buscar(analisis, "R15")
+    r06 = buscar(analisis, "R06")
+    decisiones = {
+        r14.clave(): preparar_decision(analisis, r14, {"tipo": "accion", "indice": 1}),
+        r15.clave(): preparar_decision(analisis, r15, {"tipo": "ok", "nota": "son dos individuos"}),
+        r06.clave(): preparar_decision(analisis, r06, {"tipo": "valor", "texto": "1"}),
+    }
+    assert decisiones[r14.clave()].reemplaza_formula
+    _, proyectado = proyectar(analisis, decisiones)
+    r = generar(analisis, tmp_path, decisiones, con_libreoffice=False, informar=lambda *a: None)
+    assert r.verificacion.todo_ok, r.verificacion
+    assert r.puntaje_despues.indice == pytest.approx(proyectado.indice)
+    assert r.aceptados == 1
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        wb = openpyxl.load_workbook(r.archivos["corregida"])
+        rev = openpyxl.load_workbook(r.archivos["revision"])
+    reg = wb["Registros"]
+    fila = int(r14.celda[2:])
+    assert reg[r14.celda].value == "Indirecto"
+    assert str(reg[f"AB{fila + 1}"].value).startswith("=IF(OR(AC")  # el resto de la columna sigue con fórmula
+    assert reg[r06.celda].value == 1
+    h = rev["HALLAZGOS"]
+    columnas = [c.value for c in h[1]]
+    decisiones_escritas = [h.cell(i, columnas.index("Decisión / Corrección") + 1).value for i in range(2, h.max_row + 1)]
+    assert any(d and "son dos individuos" in d for d in decisiones_escritas)
+    cambios = list(csv.DictReader(open(r.archivos["cambios"], encoding="utf-8")))
+    assert {c["regla"] for c in cambios} >= {"MANUAL:R14", "MANUAL:R06"}
+    assert "## Decisiones tomadas en la revisión (3)" in r.archivos["reporte"].read_text(encoding="utf-8")
+    with zipfile.ZipFile(r.archivos["corregida"]) as z:
+        assert "xl/calcChain.xml" not in z.namelist()

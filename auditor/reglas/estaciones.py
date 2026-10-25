@@ -7,7 +7,7 @@ from collections import Counter, defaultdict
 from difflib import SequenceMatcher
 
 from ..contexto import COORDS, distancia, texto_id
-from ..hallazgos import Severidad, regla
+from ..hallazgos import Accion, Severidad, regla
 from ..texto import (
     a_numero,
     clave,
@@ -130,6 +130,7 @@ def e03(ctx):
                     f"'{mostrar(v)}' parece una variante de '{canonica}'. Variantes encontradas: {resumen}. "
                     "R y PAST las tratarán como ambientes distintos.",
                     f"Unifica el nombre del ambiente (sugerido: '{canonica}').",
+                    acciones=[Accion(f"Usar «{canonica}»", canonica)],
                 )
 
 
@@ -160,6 +161,7 @@ def e04(ctx):
                 f"ID Final '{mostrar(final)}' es distinto del ID '{texto_id(id_)}'.",
                 "Si el cambio de nombre es intencional (código final del informe), déjalo; si no, "
                 "copia el ID. No se corrige solo para no borrar un renombre deliberado.",
+                acciones=[Accion(f"Copiar el ID «{texto_id(id_)}»", texto_id(id_))],
             )
 
 
@@ -294,7 +296,7 @@ def e09(ctx):
             desc = "; ".join(f"{NOMBRE_PUNTO_AL[c]} de {ctx.id_de_estacion(g)} (fila {g})" for g, c in otros)
             yield ctx.hallazgo(
                 "E09", est, f, f"utm_e{cual}",
-                f"{NOMBRE_PUNTO[cual].capitalize()} {_xy(p)} es idéntico a {desc}: probable copy-paste.",
+                f"{NOMBRE_PUNTO[cual].capitalize()} {_xy(p)} es idéntico {desc}: probable copy-paste.",
                 "Corrige con la coordenada real tomada en terreno; con la copiada, los largos de "
                 "transecto y las distancias de captura quedan mal.",
                 valor=f"{p[0]:.0f}, {p[1]:.0f}",
@@ -352,6 +354,7 @@ def e11(ctx):
                 yield ctx.hallazgo(
                     "E11", est, f, c, f"'{nombre}' = '{mostrar(v)}' no se puede interpretar como 1/0.",
                     "Escribe 1 si la metodología se aplicó en la estación y 0 si no.",
+                    acciones=[Accion("1 (se hizo)", 1), Accion("0 (no se hizo)", 0)],
                 )
 
 
@@ -400,6 +403,7 @@ def e13(ctx):
                     "E13", est, f, c, f"{nombre} vacío.",
                     f"Completa con el valor del resto de las estaciones ('{mayoritaria}')."
                     if mayoritaria else f"Completa {nombre}.",
+                    acciones=[Accion(f"Usar «{mayoritaria}»", mayoritaria)] if mayoritaria else (),
                 )
                 continue
             a = clave(v)
@@ -420,6 +424,7 @@ def e13(ctx):
                     "E13", est, f, c,
                     f"{nombre} = '{mostrar(v)}' no coincide con el resto de las filas (valores: {otros}).",
                     "Unifica el valor; si de verdad son proyectos/temporadas distintos, sepáralos en planillas distintas.",
+                    acciones=[Accion(f"Usar «{mayoritaria}»", mayoritaria)] if mayoritaria else (),
                 )
 
 
@@ -435,12 +440,13 @@ def e14(ctx):
         v = est.valor(f, "ladera")
         if es_vacio(v):
             yield ctx.hallazgo("E14", est, f, "ladera", "Ladera de exposición vacía.",
-                               f"Elige un valor de la lista: {', '.join(lista)}.")
+                               f"Elige un valor de la lista: {', '.join(lista)}.", opciones=lista)
         elif lista and limpiar(v) not in exactos:
             sug = por_clave.get(clave(v))
             yield ctx.hallazgo(
                 "E14", est, f, "ladera", f"Ladera '{mostrar(v)}' no está en la lista de 'validación datos'.",
                 f"Usa '{sug}'." if sug else f"Elige un valor de la lista: {', '.join(lista)}.",
+                acciones=[Accion(f"Usar «{sug}»", sug)] if sug else (), opciones=lista,
             )
 
 

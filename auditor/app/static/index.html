@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Auditor XPE</title>
+  <link rel="icon" href="/static/icono.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <header class="barra">
+    <div class="marca">
+      <img src="/static/icono.svg" alt="" width="34" height="34">
+      <div>
+        <strong>Auditor XPE</strong>
+        <span>Planillas de fauna · LdB SEIA</span>
+      </div>
+    </div>
+    <ol class="pasos" aria-label="Pasos">
+      <li data-paso="inicio"><span>1</span> Subir</li>
+      <li data-paso="revision"><span>2</span> Revisar</li>
+      <li data-paso="final"><span>3</span> Descargar</li>
+    </ol>
+    <button class="btn-fantasma" id="btn-salir" title="Cerrar el programa">⏻ Cerrar</button>
+  </header>
+
+  <main>
+    <!-- 1. Subir -->
+    <section id="vista-inicio" class="vista">
+      <div class="heroe">
+        <h1>Revisa tu planilla de fauna antes de analizarla</h1>
+        <p>Encuentra los errores que arruinan índices de diversidad, densidades y curvas de acumulación.
+          Tu archivo original <strong>nunca se modifica</strong>: se crea una copia corregida.</p>
+      </div>
+      <label id="zona-carga" class="zona-carga" tabindex="0">
+        <input type="file" id="archivo" accept=".xlsx,.xlsb,.xls,.xlsm" hidden>
+        <div class="zona-icono" aria-hidden="true">📄</div>
+        <div class="zona-titulo">Arrastra aquí la planilla XPE</div>
+        <div class="zona-sub">o haz clic para elegirla · .xlsx, .xlsb</div>
+      </label>
+      <p class="centrado"><button class="enlace" id="btn-ejemplo">¿No tienes una a mano? Prueba con una planilla de ejemplo</button></p>
+      <div id="error-inicio" class="alerta alerta-error" hidden></div>
+      <div class="rasgos">
+        <div><span>🔍</span><strong>43 revisiones</strong><p>Coordenadas, transectos, nombres, abundancias, horarios, duplicados…</p></div>
+        <div><span>🛠️</span><strong>Corrige solo lo seguro</strong><p>Espacios invisibles, mayúsculas, «Si» → 1. El resto lo decides tú.</p></div>
+        <div><span>📊</span><strong>Lista para R y PAST</strong><p>Planilla corregida, informe y base larga con las uniones rehechas.</p></div>
+      </div>
+      <div id="recientes" class="recientes" hidden>
+        <h2>Revisiones recientes</h2>
+        <div id="lista-recientes" class="lista-recientes"></div>
+      </div>
+      <p class="pie" id="pie-info"></p>
+    </section>
+
+    <!-- Progreso -->
+    <section id="vista-progreso" class="vista" hidden>
+      <div class="tarjeta progreso">
+        <div class="girador" aria-hidden="true"></div>
+        <h2 id="progreso-titulo">Revisando la planilla…</h2>
+        <p id="progreso-archivo" class="tenue"></p>
+        <ul id="progreso-pasos" class="progreso-pasos"></ul>
+      </div>
+    </section>
+
+    <!-- 2. Revisar -->
+    <section id="vista-revision" class="vista" hidden>
+      <div class="revision">
+        <aside class="lateral">
+          <div class="tarjeta archivo-tarjeta">
+            <div class="archivo-nombre" id="r-archivo"></div>
+            <div class="tenue" id="r-resumen"></div>
+            <button class="enlace" id="btn-otra">Revisar otra planilla</button>
+          </div>
+          <div class="tarjeta puntaje-tarjeta">
+            <div class="anillo" id="r-anillo"></div>
+            <div class="estado" id="r-estado"></div>
+            <div class="comparacion" id="r-comparacion"></div>
+            <div class="barras" id="r-barras"></div>
+            <details class="formula">
+              <summary>¿Cómo se calcula?</summary>
+              <p>Índice = 70% × registros limpios + 30% × estaciones limpias − 2 por cada tipo de error 🔴.
+                Un registro o estación está «limpio» si no tiene problemas 🔴 ni 🟠. Lo que marques
+                «está bien así» no resta.</p>
+              <p>✅ <b>Lista</b>: sin 🔴 ni 🟠 · ⚠️ <b>Usable con revisión</b>: sin 🔴 · ❌ <b>No usar</b>: hay 🔴.</p>
+            </details>
+          </div>
+          <div class="tarjeta" id="r-indicadores"></div>
+        </aside>
+
+        <div class="principal">
+          <div id="r-avisos"></div>
+          <div class="herramientas">
+            <div class="pestanas" id="r-pestanas" role="tablist"></div>
+            <div class="filtros">
+              <div class="segmentado" id="r-agrupar">
+                <button data-agrupar="estacion" class="activo">Por estación</button>
+                <button data-agrupar="regla">Por tipo de problema</button>
+              </div>
+              <div class="chips" id="r-niveles"></div>
+              <input type="search" id="r-buscar" placeholder="Buscar estación, especie, celda…" aria-label="Buscar">
+            </div>
+          </div>
+          <div id="r-lista" class="lista"></div>
+        </div>
+      </div>
+      <div class="barra-accion">
+        <div id="r-barra-texto"></div>
+        <button class="btn" id="btn-generar">Generar planilla corregida →</button>
+      </div>
+    </section>
+
+    <!-- 3. Descargar -->
+    <section id="vista-final" class="vista" hidden>
+      <div class="final">
+        <div class="tarjeta final-cabecera">
+          <div class="final-icono">🎉</div>
+          <div>
+            <h1>Planilla corregida lista</h1>
+            <p class="tenue" id="f-subtitulo"></p>
+          </div>
+        </div>
+        <div class="final-grilla">
+          <div class="tarjeta">
+            <h2>Puntaje</h2>
+            <div id="f-puntaje" class="f-puntaje"></div>
+            <div id="f-pendientes"></div>
+          </div>
+          <div class="tarjeta">
+            <h2>Verificación del archivo corregido</h2>
+            <ul id="f-verificacion" class="verificacion"></ul>
+          </div>
+        </div>
+        <div class="tarjeta">
+          <div class="archivos-cabecera">
+            <h2>Archivos</h2>
+            <div class="botones">
+              <button class="btn-sec" id="btn-carpeta">📂 Abrir carpeta</button>
+              <a class="btn" id="btn-zip">⬇ Descargar todo (.zip)</a>
+            </div>
+          </div>
+          <div id="f-archivos" class="archivos"></div>
+          <p class="tenue" id="f-carpeta"></p>
+        </div>
+        <div class="botones centrado">
+          <button class="btn-sec" id="btn-volver">← Volver a la revisión</button>
+          <button class="btn-sec" id="btn-otra-final">Revisar otra planilla</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="vista-cerrado" class="vista" hidden>
+      <div class="tarjeta progreso">
+        <div class="final-icono">👋</div>
+        <h2>El Auditor XPE se cerró</h2>
+        <p class="tenue">Ya puedes cerrar esta pestaña. Tus decisiones quedaron guardadas.</p>
+      </div>
+    </section>
+  </main>
+
+  <div id="modal" class="modal" hidden>
+    <div class="tarjeta modal-caja">
+      <div class="girador" aria-hidden="true"></div>
+      <h2 id="modal-titulo">Generando…</h2>
+      <ul id="modal-pasos" class="progreso-pasos"></ul>
+    </div>
+  </div>
+  <div id="avisos" class="avisos" aria-live="polite"></div>
+  <datalist id="dl-especies"></datalist>
+  <script src="/static/app.js"></script>
+</body>
+</html>

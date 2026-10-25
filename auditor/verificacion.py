@@ -29,6 +29,7 @@ class Verificacion:
     libreoffice: dict | None = None
     reauditoria_coincide: bool | None = None
     diferencias_reauditoria: list[str] = field(default_factory=list)
+    formulas_reemplazadas: int = 0  # Directo/Indirecto o Comportamiento escritos a mano
 
     @property
     def x14_ok(self) -> bool:
@@ -36,7 +37,8 @@ class Verificacion:
 
     @property
     def formulas_ok(self) -> bool:
-        return self.formulas_original == self.formulas_corregida
+        esperadas = sum(self.formulas_original.values()) - self.formulas_reemplazadas
+        return sum(self.formulas_corregida.values()) == esperadas
 
     @property
     def celdas_ok(self) -> bool:
@@ -99,7 +101,8 @@ def errores_de_formulas(ruta: Path) -> dict[tuple[str, str], str]:
 
 
 def verificar_corregida(original: Path, corregida: Path, cambios: dict[str, dict[str, object]],
-                        con_libreoffice: bool = True, config: dict | None = None) -> Verificacion:
+                        con_libreoffice: bool = True, config: dict | None = None,
+                        formulas_reemplazadas: int = 0) -> Verificacion:
     with zipfile.ZipFile(original) as zo, zipfile.ZipFile(corregida) as zc:
         estilos = zo.read("xl/styles.xml") == zc.read("xl/styles.xml")
         recalculo = 'fullCalcOnLoad="1"' in zc.read("xl/workbook.xml").decode("utf-8")
@@ -115,7 +118,7 @@ def verificar_corregida(original: Path, corregida: Path, cambios: dict[str, dict
     v = Verificacion(
         xlsx_xml.contar_x14_validaciones(original), xlsx_xml.contar_x14_validaciones(corregida),
         xlsx_xml.contar_formulas(original), xlsx_xml.contar_formulas(corregida),
-        estilos, recalculo, distintas, esperadas,
+        estilos, recalculo, distintas, esperadas, formulas_reemplazadas=formulas_reemplazadas,
     )
     if con_libreoffice and soffice_disponible():
         v.libreoffice = recalcular_y_comparar(original, corregida, config)

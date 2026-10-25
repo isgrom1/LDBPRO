@@ -173,6 +173,16 @@ def a_hora(v) -> time | None:
     return None
 
 
+def fecha_a_excel(d: date) -> int:
+    """Número de serie con que Excel guarda una fecha."""
+    return (d - _EXCEL_EPOCH.date()).days
+
+
+def hora_a_excel(h: time) -> float:
+    """Fracción del día con que Excel guarda una hora."""
+    return (h.hour * 3600 + h.minute * 60 + h.second) / 86400
+
+
 def hora_desde_texto(s: str) -> time:
     """'12:00' -> time(12, 0). Para leer horarios desde config.yaml."""
     h = a_hora(s)

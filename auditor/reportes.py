@@ -36,19 +36,23 @@ def escribir_cambios_csv(ruta: Path, cambios: list[Cambio]) -> None:
             w.writerow([c.hoja, c.celda, anterior, c.valor_nuevo, "+".join(c.reglas), mostrar(c.valor_anterior)])
 
 
-def escribir_hallazgos_csv(ruta: Path, hallazgos: list[Hallazgo], aplicados: set, pendientes: set) -> None:
+def escribir_hallazgos_csv(
+    ruta: Path, hallazgos: list[Hallazgo], resueltos: set[str], pendientes: set, decisiones: dict[str, str] | None = None
+) -> None:
+    decisiones = decisiones or {}
     with open(ruta, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         w.writerow(["id_regla", "severidad", "hoja", "celda", "fila", "id_estacion", "valor_actual", "problema",
-                    "sugerencia", "auto_corregible", "aplicado", "valor_nuevo", "pendiente"])
+                    "sugerencia", "auto_corregible", "aplicado", "valor_nuevo", "pendiente", "decision"])
         for h in hallazgos:
             w.writerow([
                 h.id_regla, h.severidad.etiqueta, h.hoja, h.celda or "", h.fila or "", h.id_estacion or "",
                 "" if h.valor_actual is None else mostrar(h.valor_actual), h.problema, h.sugerencia,
                 "sí" if h.auto_corregible else "no",
-                "sí" if h.auto_corregible and (h.hoja, h.celda) in aplicados else "no",
+                "sí" if h.clave() in resueltos else "no",
                 mostrar(h.correccion.valor_nuevo) if h.correccion else "",
                 "sí" if h.firma() in pendientes else "no",
+                decisiones.get(h.clave(), ""),
             ])
 
 
@@ -147,8 +151,12 @@ def escribir_reporte(
     ruta: Path, *, nombre: str, libro: Libro, antes: Puntaje, despues: Puntaje,
     hallazgos_antes: list[Hallazgo], hallazgos_despues: list[Hallazgo], cambios: list[Cambio],
     avisos_cambios: list[str], verificacion: Verificacion | None, estadisticas: dict, config: dict,
-    solo_reporte: bool, archivos: list[str],
+    solo_reporte: bool, archivos: list[str], decisiones: dict | None = None,
 ) -> None:
+    """decisiones: clave -> (hallazgo, Decision) tomadas en la aplicación."""
+    decisiones = decisiones or {}
+    manuales = [c for c in cambios if any(r.startswith("MANUAL") for r in c.reglas)]
+    automaticos = [c for c in cambios if c not in manuales]
     L: list[str] = []
     L.append(f"# Auditoría de planilla de fauna XPE — {nombre}")
     L.append("")
@@ -180,16 +188,20 @@ def escribir_reporte(
         L.append(f"| Hallazgos {s.etiqueta} | {antes.por_severidad[s.etiqueta]} | {despues.por_severidad[s.etiqueta]} |")
     L.append("")
     L.append(f"**Fórmula:** {formula_puntaje(config)}")
+    n_ok = sum(1 for _, d in decisiones.values() if d.tipo == "ok")
+    if n_ok:
+        L.append("")
+        L.append(f"En «después» no restan los {n_ok} hallazgos que marcaste como «está bien así».")
     L.append("")
     L.append("**Estado:** ✅ LISTA PARA ANÁLISIS = sin 🔴 ni 🟠 · ⚠️ USABLE CON REVISIÓN = sin 🔴 pero con 🟠 · ❌ NO USAR = hay 🔴.")
     L.append("")
 
-    L.append(f"## Qué se corrigió solo ({len(cambios)} celdas)")
+    L.append(f"## Qué se corrigió solo ({len(automaticos)} celdas)")
     L.append("")
     if solo_reporte:
         L.append("Modo `--solo-reporte`: no se escribió el archivo corregido. Estas son las correcciones que se aplicarían:")
         L.append("")
-    L += _resumen_cambios(cambios) or ["- Nada."]
+    L += _resumen_cambios(automaticos) or ["- Nada."]
     for a in avisos_cambios:
         L.append(f"- ⚠️ {a}")
     if cambios and not solo_reporte:
@@ -197,7 +209,17 @@ def escribir_reporte(
         L.append("Detalle celda a celda en `cambios_aplicados.csv`.")
     L.append("")
 
-    pendientes = [h for h in hallazgos_despues]
+    if decisiones:
+        L.append(f"## Decisiones tomadas en la revisión ({len(decisiones)})")
+        L.append("")
+        for h, d in sorted(decisiones.values(), key=lambda x: (_orden_natural(x[0].id_estacion or "~"), x[0].id_regla)):
+            donde = f"`{h.hoja}!{h.celda}`" if h.celda else f"`{h.hoja}`"
+            est = f" ({h.id_estacion})" if h.id_estacion else ""
+            L.append(f"- {h.severidad.emoji} **{h.id_regla}** {donde}{est} — {_md(h.problema)} → **{_md(d.describir())}**")
+        L.append("")
+
+    aceptados = {k for k, (_, d) in decisiones.items() if d.tipo == "ok"}
+    pendientes = [h for h in hallazgos_despues if h.clave() not in aceptados]
     graves = [h for h in pendientes if h.severidad is not Severidad.INFO]
     L.append(f"## Qué falta decidir ({len(graves)} 🔴/🟠 y {len(pendientes) - len(graves)} 🟡 pendientes)")
     L.append("")

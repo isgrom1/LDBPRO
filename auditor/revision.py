@@ -40,15 +40,19 @@ def _celda_editable(ws, ref: str):
     return c
 
 
-def _texto_comentario(h: Hallazgo, aplicado: bool, relacionado: str | None = None) -> str:
+def _texto_comentario(h: Hallazgo, aplicado: bool, decision: str | None, relacionado: str | None = None) -> str:
     cab = f"[{h.id_regla} · {h.severidad.etiqueta}]"
     if relacionado:
         cab += f" (relacionado con {relacionado})"
-    estado = "\n✔ Corregido automáticamente en _CORREGIDA." if aplicado else ""
+    estado = ""
+    if decision:
+        estado = f"\n✎ Decisión: {decision}"
+    if aplicado:
+        estado += "\n✔ Corregido en _CORREGIDA."
     return f"{cab}\n{h.problema}\n→ {h.sugerencia}{estado}"
 
 
-def marcar_celdas(wb, hallazgos: list[Hallazgo], aplicados: set[tuple[str, str]]) -> int:
+def marcar_celdas(wb, hallazgos: list[Hallazgo], resueltos: set[str], decisiones: dict[str, str]) -> int:
     por_celda: dict[tuple[str, str], list[tuple[Hallazgo, str | None]]] = defaultdict(list)
     for h in hallazgos:
         if h.hoja not in wb.sheetnames or not h.celda:
@@ -61,7 +65,7 @@ def marcar_celdas(wb, hallazgos: list[Hallazgo], aplicados: set[tuple[str, str]]
         c = _celda_editable(ws, ref)
         peor = max((h.severidad for h, _ in items), key=lambda s: s.nivel)
         c.fill = _relleno(peor)
-        partes = [_texto_comentario(h, (h.hoja, h.celda) in aplicados and h.auto_corregible, rel) for h, rel in items]
+        partes = [_texto_comentario(h, h.clave() in resueltos, decisiones.get(h.clave()), rel) for h, rel in items]
         texto = "\n\n".join(partes)
         if c.comment is not None and c.comment.text:
             texto = f"{c.comment.text}\n\n— Auditoría —\n{texto}"
@@ -85,7 +89,7 @@ def _escribir_fila(ws, fila: int, valores, negrita=False, relleno=None, fuente=N
             c.fill = relleno
 
 
-def hoja_hallazgos(wb, hallazgos: list[Hallazgo], aplicados: set, pendientes: set) -> None:
+def hoja_hallazgos(wb, hallazgos: list[Hallazgo], resueltos: set, pendientes: set, decisiones: dict[str, str]) -> None:
     ws = wb.create_sheet("HALLAZGOS", 0)
     columnas = [
         ("N°", 6), ("Severidad", 16), ("Regla", 7), ("Descripción de la regla", 34), ("Hoja", 13),
@@ -98,13 +102,13 @@ def hoja_hallazgos(wb, hallazgos: list[Hallazgo], aplicados: set, pendientes: se
         ws.column_dimensions[get_column_letter(j)].width = ancho
     for i, h in enumerate(hallazgos, start=1):
         r = REGLAS.get(h.id_regla)
-        aplicado = h.auto_corregible and (h.hoja, h.celda) in aplicados
+        aplicado = h.clave() in resueltos
         fila = [
             i, h.severidad.etiqueta, h.id_regla, r.titulo if r else "", h.hoja, h.celda or "",
             h.fila or "", h.id_estacion or "", mostrar(h.valor_actual) if h.valor_actual is not None else "",
             h.problema, h.sugerencia, "Sí" if h.auto_corregible else "No", "Sí" if aplicado else "No",
             mostrar(h.correccion.valor_nuevo) if h.correccion else "",
-            "Sí" if h.firma() in pendientes else "No", "",
+            "Sí" if h.firma() in pendientes else "No", decisiones.get(h.clave(), ""),
         ]
         _escribir_fila(ws, i + 1, fila)
         ws.cell(i + 1, 2).fill = _relleno(h.severidad)
@@ -199,15 +203,17 @@ def top_problemas(hallazgos: list[Hallazgo], n: int):
 
 def escribir_revision(
     ruta_xlsx: Path, destino: Path, nombre: str, formato: str, hallazgos_antes: list[Hallazgo],
-    hallazgos_despues: list[Hallazgo], antes: Puntaje, despues: Puntaje, aplicados: set,
-    config: dict, estadisticas: dict, n_cambios: int,
+    hallazgos_despues: list[Hallazgo], antes: Puntaje, despues: Puntaje, resueltos: set[str],
+    config: dict, estadisticas: dict, n_cambios: int, decisiones: dict[str, str] | None = None,
 ) -> None:
+    """resueltos: claves de hallazgos corregidos en _CORREGIDA; decisiones: clave -> texto."""
+    decisiones = decisiones or {}
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         wb = openpyxl.load_workbook(ruta_xlsx)
-    marcar_celdas(wb, hallazgos_antes, aplicados)
+    marcar_celdas(wb, hallazgos_antes, resueltos, decisiones)
     pendientes = {h.firma() for h in hallazgos_despues}
-    hoja_hallazgos(wb, hallazgos_antes, aplicados, pendientes)
+    hoja_hallazgos(wb, hallazgos_antes, resueltos, pendientes, decisiones)
     hoja_resumen(wb, nombre, formato, antes, despues, hallazgos_antes, hallazgos_despues, config,
                  estadisticas, n_cambios)
     wb.active = 0

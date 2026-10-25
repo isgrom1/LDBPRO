@@ -177,7 +177,7 @@ class Contexto:
     def hallazgo(
         self, id_regla: str, tabla: Tabla | str, fila: int | None, clave_col: str | None,
         problema: str, sugerencia: str, valor=_NADA, correccion=_NADA, celda: str | None = None,
-        id_estacion: str | None = None, celdas_extra=(),
+        id_estacion: str | None = None, celdas_extra=(), acciones=(), opciones=None,
     ) -> Hallazgo:
         r = REGLAS[id_regla]
         if isinstance(tabla, Tabla):
@@ -199,6 +199,7 @@ class Contexto:
         return Hallazgo(
             id_regla=id_regla, hoja=hoja, celda=celda, fila=fila, id_estacion=id_estacion,
             valor_actual=valor, problema=problema, sugerencia=sugerencia, severidad=r.severidad,
-            correccion=corr, celdas_extra=list(celdas_extra),
+            correccion=corr, celdas_extra=list(celdas_extra), acciones=list(acciones),
+            opciones=list(opciones) if opciones else None,
         )
 

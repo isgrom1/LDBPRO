@@ -15,6 +15,7 @@ from collections import defaultdict
 from pathlib import Path
 
 from lxml import etree
+from openpyxl.formula.translate import Translator
 from openpyxl.utils import column_index_from_string, range_boundaries
 
 NS_MAIN = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
@@ -146,7 +147,7 @@ def _estilos_de_columna(xml: str) -> dict[int, str]:
     return estilos
 
 
-def _editar_fila(fila_xml: str, num_fila: int, cambios: dict[str, object], estilos_col) -> str:
+def _editar_fila(fila_xml: str, num_fila: int, cambios: dict[str, object], estilos_col, permitir=()) -> str:
     if fila_xml.endswith("/>"):
         apertura, cuerpo = fila_xml[:-2] + ">", ""
     else:
@@ -166,7 +167,7 @@ def _editar_fila(fila_xml: str, num_fila: int, cambios: dict[str, object], estil
             raise ErrorEdicionXML(f"{ref} no pertenece a la fila {num_fila}")
         existente = next((c for c in celdas if c[2] == ref), None)
         if existente is not None:
-            if "<f" in existente[4]:
+            if "<f" in existente[4] and ref not in permitir:
                 raise ErrorEdicionXML(f"{ref} contiene una fórmula; no se sobrescribe")
             reemplazos.append((existente[0], existente[1], construir_celda(ref, existente[3], valor)))
             continue
@@ -184,10 +185,47 @@ def _editar_fila(fila_xml: str, num_fila: int, cambios: dict[str, object], estil
     return apertura + cuerpo + "</row>"
 
 
-def aplicar_cambios_hoja(xml: str, cambios: dict[str, object]) -> str:
-    """Aplica {ref: valor} sobre el XML de una hoja. Valor: número, texto o None (vaciar)."""
+def _descompartir(xml: str, ref_maestra: str) -> str:
+    """Si la celda es la maestra de una fórmula compartida, escribe la fórmula explícita en cada
+    celda del grupo para poder sobrescribir la maestra sin romper las demás."""
+    m = re.search(rf'<c r="{ref_maestra}"[^>]*>(.*?)</c>', xml, re.S)
+    f = re.search(r"<f\b([^>]*)>(.*?)</f>", m.group(1), re.S) if m else None
+    if not f:
+        return xml
+    attrs = dict(_ATTR_RE.findall(f.group(1)))
+    if attrs.get("t") != "shared" or "ref" not in attrs:
+        return xml
+    si, texto = attrs["si"], html.unescape(f.group(2))
+    hija = re.compile(rf'<f\b(?=[^>]*\bt="shared")(?=[^>]*\bsi="{si}")[^>]*/>')
+    ediciones = []
+    for c in _CELL_RE.finditer(xml):
+        contenido = c.group(3) or ""
+        ref = dict(_ATTR_RE.findall(c.group(1))).get("r")
+        if ref == ref_maestra:
+            fm = re.search(r"<f\b[^>]*>.*?</f>", contenido, re.S)
+            nuevo = contenido[: fm.start()] + f"<f>{_escapar(texto)}</f>" + contenido[fm.end():]
+        elif hija.search(contenido):
+            traducida = Translator("=" + texto, origin=ref_maestra).translate_formula(ref)[1:]
+            nuevo = hija.sub(f"<f>{_escapar(traducida)}</f>", contenido)
+        else:
+            continue
+        ini = c.start(3)
+        ediciones.append((ini, ini + len(contenido), nuevo))
+    for ini, fin, texto_nuevo in reversed(ediciones):
+        xml = xml[:ini] + texto_nuevo + xml[fin:]
+    return xml
+
+
+def aplicar_cambios_hoja(xml: str, cambios: dict[str, object], permitir_formula=()) -> str:
+    """Aplica {ref: valor} sobre el XML de una hoja. Valor: número, texto o None (vaciar).
+
+    Las celdas con fórmula se rechazan, salvo las de ``permitir_formula``.
+    """
     if not cambios:
         return xml
+    for ref in permitir_formula:
+        if ref in cambios:
+            xml = _descompartir(xml, ref)
     ini_sd = xml.find("<sheetData")
     if ini_sd < 0:
         raise ErrorEdicionXML("La hoja no tiene <sheetData>")
@@ -211,7 +249,7 @@ def aplicar_cambios_hoja(xml: str, cambios: dict[str, object]) -> str:
     for n, cambios_fila in por_fila.items():
         if n in filas:
             ini, fin = filas[n]
-            ediciones.append((ini, fin, _editar_fila(xml[ini:fin], n, cambios_fila, estilos_col)))
+            ediciones.append((ini, fin, _editar_fila(xml[ini:fin], n, cambios_fila, estilos_col, permitir_formula)))
         else:
             siguiente = min((v[0] for k, v in filas.items() if k > n), default=fin_sd)
             nueva = _editar_fila(f'<row r="{n}"/>', n, cambios_fila, estilos_col)
@@ -242,10 +280,29 @@ def activar_recalculo(wb_xml: str) -> str:
     raise ErrorEdicionXML("workbook.xml sin cierre </workbook>")
 
 
+def _quitar_calcchain(nuevos: dict[str, bytes], zi: zipfile.ZipFile) -> set[str]:
+    """Quita xl/calcChain.xml (y sus referencias): Excel lo rehace al abrir. Es necesario si se
+    reemplazó alguna fórmula por un valor, porque la cadena apuntaría a celdas sin fórmula."""
+    rels = "xl/_rels/workbook.xml.rels"
+    nuevos[rels] = re.sub(
+        r'<Relationship\b[^>]*Target="[^"]*calcChain\.xml"[^>]*/>', "", zi.read(rels).decode("utf-8")
+    ).encode("utf-8")
+    tipos = "[Content_Types].xml"
+    nuevos[tipos] = re.sub(
+        r'<Override\b[^>]*PartName="/xl/calcChain\.xml"[^>]*/>', "", zi.read(tipos).decode("utf-8")
+    ).encode("utf-8")
+    return {"xl/calcChain.xml"}
+
+
 def escribir_con_cambios(
-    original: str | Path, destino: str | Path, cambios: dict[str, dict[str, object]]
+    original: str | Path, destino: str | Path, cambios: dict[str, dict[str, object]],
+    permitir_formula: dict[str, set[str]] | None = None,
 ) -> None:
-    """Copia el paquete .xlsx aplicando {hoja: {ref: valor}}. Nunca toca el original."""
+    """Copia el paquete .xlsx aplicando {hoja: {ref: valor}}. Nunca toca el original.
+
+    ``permitir_formula`` = {hoja: {ref}} de celdas con fórmula que sí se pueden sobrescribir.
+    """
+    permitir_formula = permitir_formula or {}
     original, destino = Path(original).resolve(), Path(destino).resolve()
     if original == destino:
         raise ErrorEdicionXML("El destino no puede ser el archivo original")
@@ -256,17 +313,24 @@ def escribir_con_cambios(
         if desconocidas:
             raise ErrorEdicionXML(f"Hojas inexistentes: {sorted(desconocidas)}")
         nuevos: dict[str, bytes] = {}
+        omitir: set[str] = set()
+        formulas_quitadas = False
         for hoja, cambios_hoja in cambios.items():
             if cambios_hoja:
                 xml = zi.read(partes[hoja]).decode("utf-8")
-                xml_nuevo = aplicar_cambios_hoja(xml, cambios_hoja)
+                xml_nuevo = aplicar_cambios_hoja(xml, cambios_hoja, permitir_formula.get(hoja, ()))
                 etree.fromstring(xml_nuevo.encode("utf-8"))  # debe seguir siendo XML válido
                 nuevos[partes[hoja]] = xml_nuevo.encode("utf-8")
+                formulas_quitadas |= len(re.findall(r"<f[ >/]", xml_nuevo)) < len(re.findall(r"<f[ >/]", xml))
+        if formulas_quitadas and "xl/calcChain.xml" in zi.namelist():
+            omitir = _quitar_calcchain(nuevos, zi)
         nuevos["xl/workbook.xml"] = activar_recalculo(
             zi.read("xl/workbook.xml").decode("utf-8")
         ).encode("utf-8")
         with zipfile.ZipFile(temporal, "w") as zo:
             for info in zi.infolist():
+                if info.filename in omitir:
+                    continue
                 datos = nuevos.get(info.filename)
                 if datos is None:
                     datos = zi.read(info.filename)

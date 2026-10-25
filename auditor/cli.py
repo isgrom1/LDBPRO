@@ -5,49 +5,16 @@ from __future__ import annotations
 import argparse
 import sys
 import tempfile
-from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 
 from .config import cargar_config
-from .formato import convertir_con_libreoffice, detectar_formato, nombre_base
-from .hallazgos import Hallazgo
-from .modelo import Libro, leer_libro, tabla_mapeo
-from .motor import (
-    Cambio,
-    Puntaje,
-    aplicar_en_memoria,
-    auditar,
-    calcular_puntaje,
-    cambios_por_hoja,
-    consolidar_cambios,
-)
-from .reportes import (
-    escribir_base_larga,
-    escribir_cambios_csv,
-    escribir_hallazgos_csv,
-    escribir_reporte,
-    filas_base_larga,
-)
-from .revision import escribir_revision
-from .verificacion import Verificacion, verificar_corregida
-from .xlsx_xml import escribir_con_cambios
+from .formato import nombre_base
+from .modelo import Libro, tabla_mapeo
+from .motor import Puntaje
+from .sesion import Resultado, analizar, generar
 
-
-@dataclass
-class Resultado:
-    carpeta: Path
-    nombre: str
-    libro: Libro
-    hallazgos_antes: list[Hallazgo]
-    hallazgos_despues: list[Hallazgo]
-    puntaje_antes: Puntaje
-    puntaje_despues: Puntaje
-    cambios: list[Cambio]
-    avisos_cambios: list[str]
-    verificacion: Verificacion | None
-    estadisticas: dict
-    archivos: dict[str, Path] = field(default_factory=dict)
+__all__ = ["Resultado", "carpeta_salida", "ejecutar", "main"]
 
 
 def carpeta_salida(base: Path, nombre: str, hoy: date) -> Path:
@@ -66,76 +33,17 @@ def ejecutar(
     salida: str | Path | None = None, con_libreoffice: bool = True, hoy: date | None = None,
     informar=print,
 ) -> Resultado:
+    """Audita, aplica las auto-correcciones y escribe todas las salidas (sin decisiones manuales)."""
     ruta = Path(planilla).resolve()
     if not ruta.is_file():
         raise FileNotFoundError(f"No existe el archivo {ruta}")
     cfg = config if isinstance(config, dict) else cargar_config(config)
-    formato = detectar_formato(ruta)
-    if formato == "desconocido":
-        raise ValueError(f"{ruta.name} no es una planilla Excel (.xlsx/.xlsb/.xls)")
-    informar(f"Formato real de {ruta.name}: {formato}")
-    nombre = nombre_base(ruta)
-    carpeta = carpeta_salida(Path(salida).resolve() if salida else ruta.parent, nombre, hoy or date.today())
-
+    carpeta = carpeta_salida(Path(salida).resolve() if salida else ruta.parent, nombre_base(ruta), hoy or date.today())
     with tempfile.TemporaryDirectory(prefix="auditor_xpe_") as tmp:
-        ruta_xlsx = ruta
-        if formato in ("xlsb", "xls"):
-            informar(f"Convirtiendo {formato} a xlsx con LibreOffice…")
-            ruta_xlsx = convertir_con_libreoffice(ruta, tmp)
-        libro = leer_libro(ruta_xlsx, cfg, formato=formato, ruta_original=ruta)
-        informar(texto_mapeo(libro))
-
-        antes, ctx_antes = auditar(libro, cfg)
-        cambios, avisos_cambios = consolidar_cambios(libro, antes)
-        libro_despues = aplicar_en_memoria(libro, cambios)
-        despues, _ = auditar(libro_despues, cfg, incluir_cache=False)
-        archivos: dict[str, Path] = {}
-
-        verificacion = None
-        libro_base, ctx_base, hallazgos_base = libro, ctx_antes, antes
-        if not solo_reporte:
-            corregida = carpeta / f"{nombre}_CORREGIDA.xlsx"
-            por_hoja = cambios_por_hoja(cambios)
-            escribir_con_cambios(ruta_xlsx, corregida, por_hoja)
-            archivos["corregida"] = corregida
-            archivos["cambios"] = carpeta / "cambios_aplicados.csv"
-            escribir_cambios_csv(archivos["cambios"], cambios)
-            informar("Verificando el archivo corregido…")
-            verificacion = verificar_corregida(ruta_xlsx, corregida, por_hoja, con_libreoffice, cfg)
-            # El "después" oficial es el que da volver a leer y auditar el archivo escrito.
-            libro_c = leer_libro(corregida, cfg, formato="xlsx", ruta_original=ruta)
-            reauditoria, ctx_c = auditar(libro_c, cfg, incluir_cache=False)
-            a, b = {h.firma() for h in despues}, {h.firma() for h in reauditoria}
-            verificacion.reauditoria_coincide = a == b
-            verificacion.diferencias_reauditoria = [" / ".join(map(str, x)) for x in sorted(a ^ b)][:20]
-            despues = reauditoria
-            libro_base, ctx_base, hallazgos_base = libro_c, ctx_c, reauditoria
-
-        p_antes = calcular_puntaje(libro, antes, cfg)
-        p_despues = calcular_puntaje(libro_despues, despues, cfg)
-        aplicados = set() if solo_reporte else {(c.hoja, c.celda) for c in cambios}
-        pendientes = {h.firma() for h in despues}
-        estadisticas = ctx_antes.estadisticas
-
-        archivos["revision"] = carpeta / f"{nombre}_REVISION.xlsx"
-        informar("Escribiendo el archivo de revisión…")
-        escribir_revision(ruta_xlsx, archivos["revision"], ruta.name, formato, antes, despues, p_antes,
-                          p_despues, aplicados, cfg, estadisticas, len(cambios))
-        archivos["hallazgos"] = carpeta / "hallazgos.csv"
-        escribir_hallazgos_csv(archivos["hallazgos"], antes, aplicados, pendientes)
-        archivos["base"] = carpeta / "base_limpia_larga.csv"
-        escribir_base_larga(archivos["base"], filas_base_larga(libro_base, ctx_base, hallazgos_base, cfg))
-        archivos["reporte"] = carpeta / "reporte.md"
-        orden = ["revision", "corregida", "cambios", "reporte", "base", "hallazgos"]
-        nombres = [archivos[k].name for k in orden if k in archivos]
-        escribir_reporte(
-            archivos["reporte"], nombre=nombre, libro=libro, antes=p_antes, despues=p_despues,
-            hallazgos_antes=antes, hallazgos_despues=despues, cambios=cambios, avisos_cambios=avisos_cambios,
-            verificacion=verificacion, estadisticas=estadisticas, config=cfg, solo_reporte=solo_reporte,
-            archivos=nombres,
-        )
-    return Resultado(carpeta, nombre, libro, antes, despues, p_antes, p_despues, cambios, avisos_cambios,
-                     verificacion, estadisticas, archivos)
+        analisis = analizar(ruta, cfg, tmp, informar)
+        informar(texto_mapeo(analisis.libro))
+        return generar(analisis, carpeta, solo_reporte=solo_reporte, con_libreoffice=con_libreoffice,
+                       informar=informar)
 
 
 def texto_mapeo(libro: Libro) -> str:

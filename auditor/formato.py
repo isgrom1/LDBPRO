@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import zipfile
 from pathlib import Path
@@ -55,7 +57,17 @@ def nombre_base(ruta: str | Path) -> str:
 
 
 def soffice_disponible() -> str | None:
-    return shutil.which("soffice") or shutil.which("libreoffice")
+    encontrado = shutil.which("soffice") or shutil.which("libreoffice")
+    if encontrado:
+        return encontrado
+    candidatos = []
+    if sys.platform.startswith("win"):  # en Windows LibreOffice no queda en el PATH
+        for base in (os.environ.get("ProgramFiles"), os.environ.get("ProgramFiles(x86)")):
+            if base:
+                candidatos.append(Path(base) / "LibreOffice" / "program" / "soffice.exe")
+    elif sys.platform == "darwin":
+        candidatos.append(Path("/Applications/LibreOffice.app/Contents/MacOS/soffice"))
+    return next((str(c) for c in candidatos if c.is_file()), None)
 
 
 def convertir_con_libreoffice(
@@ -87,6 +99,7 @@ def convertir_con_libreoffice(
                     str(copia),
                 ],
                 capture_output=True, text=True, timeout=timeout,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
     salida = carpeta_salida / (copia.stem + ".xlsx")
     if proc.returncode != 0 or not salida.exists():

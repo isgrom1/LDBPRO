@@ -4,6 +4,40 @@ Revisa una planilla de terreno con el formato XPE (`Formato_Planilla_Fauna_XPE_E
 detecta los errores que arruinan los análisis (diversidad, densidades, curvas de acumulación
 en R/PAST), aplica solo las correcciones seguras y deja el resto para que lo decidas tú.
 
+## Aplicación de escritorio (`AuditorXPE.exe`)
+
+Doble clic en **AuditorXPE.exe** y se abre la revisión en tu navegador (todo corre en tu PC,
+sin internet; también aparece una ventanita con los botones «Abrir en el navegador»,
+«Carpeta de resultados» y «Cerrar»).
+
+1. **Subir**: arrastra la planilla (o prueba con la planilla de ejemplo).
+2. **Revisar**: puntaje y estado, y los problemas agrupados por estación o por tipo, con
+   filtros por severidad y buscador. En cada problema puedes:
+   - dejar o quitar la **corrección automática**;
+   - usar un **valor sugerido** con un clic («Poner 1», «Usar «Matorral medio-alto»»…);
+   - **escribir otro valor** (o elegirlo de la lista de `validación datos`; los nombres de
+     especie se autocompletan desde `nombres BD`);
+   - marcarlo **«Está bien así»**, con una nota (no resta puntaje).
+   El puntaje se recalcula con cada decisión.
+3. **Descargar**: genera la planilla corregida con tus decisiones, muestra el puntaje final y
+   la verificación del archivo, y deja descargar cada archivo o todo en un .zip.
+
+Las revisiones quedan en `Documentos\Auditor XPE\` (una carpeta por planilla, con
+`sesion.json`). Si vuelves a abrir el mismo archivo, se recuperan tus decisiones. Un
+`config.yaml` junto al .exe (o en esa carpeta) cambia los umbrales; si algo falla, el detalle
+queda en `Documentos\Auditor XPE\registro.log`.
+
+**Descargar el .exe**: en GitHub, pestaña *Actions* → *Ejecutable para Windows* → la última
+ejecución en verde → artefacto **AuditorXPE-windows** (un .zip con el .exe). Como el .exe no
+está firmado, la primera vez Windows puede mostrar «Windows protegió su PC»: *Más información →
+Ejecutar de todas formas*.
+
+**Compilarlo en Windows** (opcional): `pip install -r requirements.txt pyinstaller==6.22.3` y
+`pyinstaller --noconfirm --clean empaquetado/AuditorXPE.spec` → `dist\AuditorXPE.exe`.
+Sin compilar: `python AuditorXPE.py`.
+
+## Línea de comandos
+
 ```
 python auditar_planilla.py ruta/planilla.xlsx [--config config.yaml] [--solo-reporte]
 ```
@@ -156,6 +190,10 @@ La planilla de prueba **no se versiona** (el repositorio es público y la planil
 coordenadas de especies, datos del proyecto y nombres de personas). Cópiala a
 `tests/datos/Formato_Planilla_Fauna_XPE_Externo_v4_version_1.xlsb.xlsx` o indica su ruta con
 la variable `PLANILLA_XPE`; sin ella, las pruebas que la necesitan se saltan.
+
+Las pruebas de la aplicación y de las decisiones usan `auditor/demo.py`, una planilla de
+ejemplo con datos ficticios (corren también en GitHub Actions, que además compila el .exe y
+le hace una autoprueba: `AuditorXPE.exe --autoprueba`).
 
 `tests/escenario.py` crea una copia de la planilla con los errores de la revisión manual que no
 están en esa versión del archivo (PMF20, PMF29/PMF32, PMF35, Cururo «P», ID Final vacío,

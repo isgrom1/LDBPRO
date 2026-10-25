@@ -51,6 +51,20 @@ class Correccion:
 
 
 @dataclass
+class Accion:
+    """Corrección sugerida que el usuario puede aplicar con un clic.
+
+    Por defecto escribe en la celda del hallazgo; hoja/celda permiten apuntar a otra
+    (p. ej. marcar la metodología en Estaciones desde un registro).
+    """
+
+    etiqueta: str
+    valor: object
+    hoja: str | None = None
+    celda: str | None = None
+
+
+@dataclass
 class Hallazgo:
     id_regla: str
     hoja: str
@@ -64,6 +78,9 @@ class Hallazgo:
     correccion: Correccion | None = None
     # Celdas adicionales a colorear en el archivo de revisión (p. ej. la otra estación de un duplicado)
     celdas_extra: list[str] = field(default_factory=list)
+    acciones: list[Accion] = field(default_factory=list)
+    # Valores permitidos para la celda (listas de 'validación datos'), para elegir de una lista
+    opciones: list[str] | None = None
 
     @property
     def auto_corregible(self) -> bool:
@@ -72,6 +89,11 @@ class Hallazgo:
     def firma(self) -> tuple:
         """Identidad del hallazgo para comparar auditorías (antes/después, memoria/archivo)."""
         return (self.id_regla, self.hoja, self.celda, self.problema)
+
+    def clave(self) -> str:
+        """Identidad estable de un hallazgo para guardar decisiones: no depende del texto,
+        que puede cambiar al corregir otras celdas."""
+        return "|".join((self.id_regla, self.hoja, self.celda or self.problema))
 
 
 @dataclass

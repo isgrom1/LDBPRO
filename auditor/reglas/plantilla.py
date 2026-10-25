@@ -6,7 +6,7 @@ import difflib
 import re
 
 from ..contexto import texto_id
-from ..hallazgos import Severidad, regla
+from ..hallazgos import Accion, Severidad, regla
 from ..modelo import HOJA_BD, HOJA_ESTACIONES
 from ..texto import (
     a_numero,
@@ -36,6 +36,7 @@ def b01(ctx):
                 "B01", bd, f, "nombre_comun",
                 f"Nombre común con {', '.join(espacios)}: quien lo escriba sin ese espacio obtiene #N/A en Excel.",
                 f"Corrige el nombre a '{limpiar(nombre)}' en nombres BD.",
+                acciones=[Accion(f"Usar «{limpiar(nombre)}»", limpiar(nombre))],
             )
         if bd.tiene("clase"):
             c = limpiar(bd.valor(f, "clase"))
@@ -45,6 +46,7 @@ def b01(ctx):
                     "B01", bd, f, "clase",
                     f"Clase '{c}' en vez de '{normal}': al agrupar por clase quedan dos grupos.",
                     f"Usa '{normal}' (como el resto del diccionario).",
+                    acciones=[Accion(f"Usar «{normal}»", normal)],
                 )
     for filas in ctx.bd_clave.values():
         especies = {clave(ctx.cientifico_bd(f)) for f in filas}
@@ -156,6 +158,8 @@ def x02(ctx):
                     esperado = tabla.valor(g, k)
                     esperado = 0 if es_vacio(esperado) and not isinstance(esperado, str) else esperado
                 cache = t.valor(f, c)
+                if cache is None:
+                    continue  # archivo guardado sin valores calculados (p. ej. por otro programa)
                 if _comparable(cache) == _comparable(esperado):
                     continue
                 if es_numero_real(cache) and a_numero(esperado) == cache:

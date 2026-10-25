@@ -9,7 +9,7 @@ from collections import Counter, defaultdict
 from datetime import date, time, timedelta
 
 from ..contexto import distancia, texto_id
-from ..hallazgos import Severidad, regla
+from ..hallazgos import Accion, Severidad, regla
 from ..modelo import HOJA_TA
 from ..texto import (
     a_fecha,
@@ -20,6 +20,7 @@ from ..texto import (
     en_rango_horario,
     es_numero_real,
     es_vacio,
+    fecha_a_excel,
     hora_desde_texto,
     limpiar,
     mostrar,
@@ -91,6 +92,7 @@ def r02(ctx):
             continue
         partes = []
         parecidos = _parecidos(texto_id(nombre), opciones)
+        candidatos = list(parecidos)
         if parecidos:
             partes.append("Parecidos en nombres BD: " + "; ".join(parecidos) + ".")
         genero = limpiar(nombre).split(" ")[0]
@@ -101,6 +103,7 @@ def r02(ctx):
                 + "; ".join(_nombre_y_especie(ctx, c) for c in congeneres[:6]) + "."
             )
             presentes = sorted(en_base.get(clave(genero), []))
+            candidatos = [n for n, _, _ in presentes] + [texto_id(ctx.bd.valor(c, "nombre_comun")) for c in congeneres] + candidatos
             if presentes:
                 partes.append(
                     "En esta base ya está: "
@@ -115,6 +118,7 @@ def r02(ctx):
             f"'{mostrar(nombre)}' no está en 'nombres BD' (ni ignorando mayúsculas): Nombre científico "
             "y Clase dan #N/A y el registro no entra a ningún análisis por especie.",
             " ".join(partes) or "Corrige el nombre o agrégalo a 'nombres BD'.",
+            acciones=[Accion(f"Usar «{n}»", n) for n in dict.fromkeys(candidatos)][:5],
         )
 
 
@@ -131,6 +135,10 @@ def r03(ctx):
                 f"'{mostrar(nombre)}' coincide (ignorando mayúsculas/espacios) con varias entradas de "
                 f"nombres BD de distinta especie: {'; '.join(opciones)}.",
                 "Elige la entrada correcta y escríbela exactamente igual.",
+                acciones=[
+                    Accion(f"Usar «{_nombre_y_especie(ctx, c)}»", texto_id(ctx.bd.valor(c, "nombre_comun")))
+                    for c in ctx.bd_clave[clave(texto_id(nombre))]
+                ],
             )
             continue
         canonico = texto_id(ctx.bd.valor(u["bd_fila_flex"], "nombre_comun"))
@@ -217,6 +225,7 @@ def r05(ctx):
                     yield ctx.hallazgo(
                         "R05", t, f, "nombre_comun", problema,
                         f"Usa una sola de las formas de nombres BD: {', '.join(sorted(oficiales))}.",
+                        acciones=[Accion(f"Usar «{o}»", o) for o in sorted(oficiales)],
                     )
 
 
@@ -243,10 +252,12 @@ def r06(ctx):
                 f"Es evidencia indirecta ({u['tipo_registro']}): entra a la riqueza pero no a la "
                 "abundancia. Déjala vacía (NA) y exclúyela de densidades e índices de abundancia."
             )
+            acciones = [Accion("Dejar vacía (NA)", None)] if not es_vacio(v) else []
         else:
             tipo = u["tipo_registro"].lower() or "registro directo"
             sugerencia = f"Es {tipo}: si no se contó, el mínimo defendible es 1 individuo."
-        yield ctx.hallazgo("R06", t, f, "abundancia", problema, sugerencia)
+            acciones = [Accion("Poner 1", 1)]
+        yield ctx.hallazgo("R06", t, f, "abundancia", problema, sugerencia, acciones=acciones)
 
 
 @regla("R07", "Abundancia atípica para la especie", INFO)
@@ -316,15 +327,17 @@ def r09(ctx):
             )
         elif rango and not (rango[0] - timedelta(days=tol) <= d <= rango[1] + timedelta(days=tol)):
             sugerencia = "Revisa día, mes y año."
+            acciones = []
             if d.day <= 12:
                 invertida = date(d.year, d.day, d.month)
                 if rango[0] <= invertida <= rango[1]:
                     sugerencia = f"¿Se invirtieron día y mes? {invertida:%d-%m-%Y} cae dentro de la campaña."
+                    acciones = [Accion(f"Usar {invertida:%d-%m-%Y}", fecha_a_excel(invertida))]
             yield ctx.hallazgo(
                 "R09", t, f, "fecha",
                 f"Fecha {d:%d-%m-%Y} a más de {tol} días del grueso de la campaña "
                 f"({rango[0]:%d-%m-%Y} a {rango[1]:%d-%m-%Y} concentra el 90% de los registros).",
-                sugerencia,
+                sugerencia, acciones=acciones,
             )
 
 
@@ -426,19 +439,23 @@ def r13(ctx):
                 continue
             v = t.valor(f, clave_col)
             if es_vacio(v):
-                yield ctx.hallazgo("R13", t, f, clave_col, f"{nombre} vacía.", f"Elige un valor de la lista: {', '.join(lista)}.")
+                yield ctx.hallazgo("R13", t, f, clave_col, f"{nombre} vacía.",
+                                   f"Elige un valor de la lista: {', '.join(lista)}.", opciones=lista)
             elif limpiar(v) not in lista:
                 parecidos = _parecidos(limpiar(v), opciones, n=1)
                 yield ctx.hallazgo(
                     "R13", t, f, clave_col,
                     f"{nombre} '{mostrar(v)}' no está en la lista de 'validación datos'.",
                     f"¿'{parecidos[0]}'?" if parecidos else f"Usa un valor de la lista: {', '.join(lista)}.",
+                    acciones=[Accion(f"Usar «{parecidos[0]}»", parecidos[0])] if parecidos else (),
+                    opciones=lista,
                 )
             elif describir_espacios(v):
                 yield ctx.hallazgo(
                     "R13", t, f, clave_col,
                     f"{nombre} '{mostrar(v)}' tiene {', '.join(describir_espacios(v))}: R lo agrupa aparte.",
                     f"Escríbelo como en la lista: '{limpiar(v)}'.",
+                    acciones=[Accion(f"Usar «{limpiar(v)}»", limpiar(v))], opciones=lista,
                 )
 
 
@@ -466,6 +483,7 @@ def r14(ctx):
                 f"La fórmula Directo/Indirecto da 'REVISAR': no reconoce el tipo de registro '{tipo}'.{pista}",
                 "Escribe a mano 'Directo' o 'Indirecto' en esta celda (la plantilla lo permite) o usa "
                 "un tipo reconocido.",
+                acciones=[Accion("Directo", "Directo"), Accion("Indirecto", "Indirecto")],
             )
         elif not es_f and not es_vacio(v) and calculado != "REVISAR" and clave(v) != clave(calculado):
             yield ctx.hallazgo(
@@ -473,6 +491,7 @@ def r14(ctx):
                 f"Directo/Indirecto escrito a mano ('{mostrar(v)}') no coincide con el tipo de registro "
                 f"'{u['tipo_registro']}' (corresponde '{calculado}').",
                 f"Escribe '{calculado}' o restaura la fórmula.",
+                acciones=[Accion(f"Usar «{calculado}»", calculado)],
             )
 
 
@@ -579,7 +598,8 @@ def r18(ctx):
         seps = [s[a.end() : b.start()].strip() or " " for a, b in zip(toks, toks[1:])]
         celdas.append((t, f, u, v, toks, seps))
     usos = Counter(sep for *_, seps in celdas for sep in set(seps))
-    dominante = usos.most_common(1)[0][0] if usos else None
+    preferencia = [",", ";", " ", "-", ":"]  # desempate: la coma es lo habitual
+    dominante = min(usos, key=lambda s: (-usos[s], preferencia.index(s) if s in preferencia else 99)) if usos else None
     for t, f, u, v, toks, seps in celdas:
         problemas = []
         if not toks:
@@ -643,6 +663,7 @@ def r20(ctx):
             f"metodología marcada ('{ctx.est.encabezados[k]}' = {mostrar(v)} en {ctx.est.celda(g, k)}).",
             f"Marca 1 en Estaciones!{ctx.est.celda(g, k)} o corrige la metodología del registro; si no, "
             "el esfuerzo de esa metodología queda mal contado.",
+            acciones=[Accion(f"Marcar 1 en Estaciones!{ctx.est.celda(g, k)}", 1, ctx.est.hoja, ctx.est.celda(g, k))],
         )
 
 
@@ -664,13 +685,14 @@ def r21(ctx):
                 yield ctx.hallazgo(
                     "R21", t, f, "comportamiento",
                     "Comportamiento sin completar (la fórmula de ayuda muestra 'COMPLETAR').",
-                    f"Elige un valor de la lista: {', '.join(lista)}.",
+                    f"Elige un valor de la lista: {', '.join(lista)}.", opciones=lista,
                 )
         elif limpiar(v) not in lista:
             parecido = _parecidos(limpiar(v), opciones, n=1)
             yield ctx.hallazgo(
                 "R21", t, f, "comportamiento", f"Comportamiento '{mostrar(v)}' no está en la lista de 'validación datos'.",
                 f"¿'{parecido[0]}'?" if parecido else "Usa un valor de la lista o agrégalo a la lista dejando constancia.",
+                acciones=[Accion(f"Usar «{parecido[0]}»", parecido[0])] if parecido else (), opciones=lista,
             )
 
 

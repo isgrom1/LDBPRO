@@ -15,3 +15,7 @@ salidas/
 __pycache__/
 *.pyc
 .pytest_cache/
+
+# Compilación del ejecutable
+build/
+dist/

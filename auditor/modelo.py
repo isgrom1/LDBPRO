@@ -144,6 +144,10 @@ _NARANJAS_REGISTROS = {
 }
 NARANJAS = {HOJA_REGISTROS: _NARANJAS_REGISTROS, HOJA_TA: _NARANJAS_REGISTROS}
 
+# Columnas con fórmula que la plantilla deja sobrescribir a mano: Directo/Indirecto cuando la
+# fórmula da "REVISAR", y Comportamiento, cuya fórmula de ayuda solo propone "Vocalización".
+SOBRESCRIBIBLES = {"dir_ind", "comportamiento"}
+
 # Columnas que llena el usuario: si tienen datos y falta el ID, el registro se pierde.
 COLUMNAS_USUARIO = {
     HOJA_ESTACIONES: ["ambiente", "ladera", *_COORDS],
