@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import csv
 import http.client
 import io
 import json
@@ -119,6 +120,35 @@ def test_flujo_completo(servidor, tmp_path):
     assert recientes[0]["archivo"] == "mi planilla ñandú.xlsx" and recientes[0]["decisiones"] == 2
 
 
+def test_domesticas_y_exoticas(servidor, tmp_path):
+    app, c = servidor
+    id_, datos = subir_demo(c, tmp_path)
+    origen = datos["origen"]
+    assert [e["nombre_comun"] for e in origen["especies"]["domesticas"]] == ["Perro"]
+    assert [e["nombre_comun"] for e in origen["especies"]["exoticas"]] == ["Conejo"]
+    assert origen["especies"]["domesticas"][0]["estaciones"] == ["QV02"]
+    assert origen["excluir"] == {"domesticas": True, "exoticas": False}  # criterio de la LdB de XPE
+    ruta = f"/api/sesiones/{id_}/origen"
+    assert c.pedir("POST", ruta, {"domesticas": "si"})[0] == 400
+    assert c.pedir("POST", ruta, {"aves": True})[0] == 400
+    estado, r = c.pedir("POST", ruta, {"domesticas": False})
+    assert estado == 200 and r["excluir"] == {"domesticas": False, "exoticas": False}
+    guardado = json.loads((app.sesiones[id_].carpeta / "sesion.json").read_text(encoding="utf-8"))
+    assert guardado["excluir_del_analisis"] == {"domesticas": False, "exoticas": False}
+
+    c.pedir("POST", f"/api/sesiones/{id_}/generar", {})
+    c.esperar(id_, "generado")
+    carpeta = app.sesiones[id_].carpeta
+    filas = list(csv.DictReader((carpeta / "base_limpia_larga.csv").read_text(encoding="utf-8").splitlines()))
+    perro = next(f for f in filas if f["nombre_comun"] == "Perro")
+    conejo = next(f for f in filas if f["nombre_comun"] == "Conejo")
+    assert (perro["origen"], perro["excluir_motivo"]) == ("doméstica", "")  # se eligió dejarla dentro
+    assert (conejo["origen"], conejo["excluir_motivo"]) == ("exótica", "")
+    md = (carpeta / "reporte.md").read_text(encoding="utf-8")
+    assert "## Especies domésticas y exóticas" in md
+    assert "**Domésticas** — en `base_limpia_larga.csv` quedan **dentro del análisis**: Perro" in md
+
+
 def test_retoma_las_decisiones_del_mismo_archivo(tmp_path):
     carpeta = tmp_path / "Auditor XPE"
     ruta = crear_planilla_demo(tmp_path / "p.xlsx")
@@ -134,8 +164,10 @@ def test_retoma_las_decisiones_del_mismo_archivo(tmp_path):
         if vuelta == 0:
             r06 = next(h for h in datos["hallazgos"] if h["regla"] == "R06")
             c.pedir("PUT", f"/api/sesiones/{r['id']}/decisiones/{r06['id']}", {"tipo": "accion", "indice": 0})
+            c.pedir("POST", f"/api/sesiones/{r['id']}/origen", {"exoticas": True})
         else:
             assert datos["restauradas"] == 1 and len(datos["decisiones"]) == 1
+            assert datos["origen"]["excluir"] == {"domesticas": True, "exoticas": True}
             assert len(list(carpeta.iterdir())) == 1  # misma carpeta de trabajo
         srv.shutdown()
         srv.server_close()

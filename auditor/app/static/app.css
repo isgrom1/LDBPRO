@@ -149,6 +149,18 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .alerta { max-width: 760px; margin: 12px auto; padding: 12px 16px; border-radius: 12px; border: 1px solid; }
 .alerta-error { background: var(--rojo-suave); border-color: var(--rojo); }
 .alerta-info { background: var(--azul-suave); border-color: var(--azul); max-width: none; margin: 0 0 12px; }
+.alerta-origen { background: var(--sup); border-color: var(--borde); max-width: none; margin: 0 0 12px; }
+.alerta-origen p { margin: 6px 0; }
+.origen-titulo { font-weight: 700; margin-bottom: 4px; }
+.origen-grupo {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px;
+  padding: 10px 0; border-top: 1px solid var(--borde);
+}
+.origen-especies { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
+.origen-especies b { margin-right: 4px; }
+.origen-especie { background: var(--sup-2); border-radius: 99px; padding: 3px 10px; font-size: .88rem; }
+.origen-especie small { color: var(--tenue); }
+.origen-nota { font-size: .85rem; }
 
 /* ---------- progreso ---------- */
 .progreso { max-width: 520px; margin: 60px auto; text-align: center; padding: 34px; }

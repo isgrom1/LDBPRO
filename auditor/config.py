@@ -13,26 +13,41 @@ POR_DEFECTO: dict = {
         "largo_max_m": 250,
         "distancia_max_estacion_a_punto_medio_m": 150,
     },
-    "ancho_transecto_m": {"Aves": 50, "Mamíferos": 20, "Reptiles": 4, "Anfibios": 4},
+    # Ancho total de la banda (m), como en la LdB de XPE: herpetozoos 200 × 5 m,
+    # aves y mamíferos 200 × 50 m (25 m a cada lado). Área = largo × ancho.
+    "ancho_transecto_m": {"Aves": 50, "Mamíferos": 50, "Reptiles": 5, "Anfibios": 5},
     "coordenadas": {"distancia_max_a_mediana_km": 5},
     "captura": {"distancia_max_m": 300},
     "domesticas": {
         "nombres_cientificos": [
             "Equus caballus", "Equus asinus", "Canis familiaris", "Canis lupus familiaris",
             "Felis catus", "Felis silvestris catus", "Bos taurus", "Capra hircus",
-            "Ovis aries", "Gallus gallus", "Gallus gallus domesticus",
+            "Ovis aries", "Gallus gallus", "Gallus gallus domesticus", "Sus scrofa domesticus",
+            "Lama glama", "Vicugna pacos",
         ],
         "nombres_comunes": [
-            "Caballo", "Caballo feral", "Perro", "Gato", "Gato doméstico", "Vaca",
-            "Vaca feral", "Cabra", "Oveja", "Burro", "Gallina",
+            "Caballo", "Caballo feral", "Perro", "Perro asilvestrado", "Gato", "Gato doméstico", "Vaca",
+            "Vaca feral", "Cabra", "Oveja", "Burro", "Mula", "Gallina", "Cerdo", "Llama", "Alpaca",
         ],
-        # True: salen con excluir_motivo en base_limpia_larga.csv; False: solo se marcan
+        # Criterio de la LdB de XPE: el ganado, perros y gatos se registran en terreno (van en la
+        # planilla), pero no entran en la lista de especies ni en los análisis.
+        # True: salen con excluir_motivo en base_limpia_larga.csv; False: entran en el análisis
         "excluir_del_analisis": True,
     },
-    # R25: especies introducidas (exóticas asilvestradas). Se marcan, no se excluyen.
-    "introducidas": {
-        "nombres_cientificos": ["Oryctolagus cuniculus", "Lepus europaeus", "Rattus rattus", "Rattus norvegicus", "Mus musculus", "Sus scrofa", "Neogale vison", "Neovison vison", "Castor canadensis", "Cervus elaphus", "Columba livia", "Passer domesticus"],
-        "nombres_comunes": ["Conejo", "Conejo europeo", "Liebre", "Liebre europea", "Rata negra", "Guarén", "Laucha doméstica", "Ratón doméstico", "Jabalí", "Visón", "Castor", "Ciervo rojo", "Paloma", "Paloma doméstica", "Gorrión"],
+    # R25: especies exóticas (introducidas y asilvestradas). En la LdB de XPE entran en la lista y
+    # en los análisis, marcadas como «Exótico».
+    "exoticas": {
+        "nombres_cientificos": [
+            "Oryctolagus cuniculus", "Lepus europaeus", "Rattus rattus", "Rattus norvegicus", "Mus musculus",
+            "Sus scrofa", "Neogale vison", "Neovison vison", "Castor canadensis", "Cervus elaphus",
+            "Columba livia", "Passer domesticus", "Callipepla californica",
+        ],
+        "nombres_comunes": [
+            "Conejo", "Conejo europeo", "Liebre", "Liebre europea", "Rata negra", "Guarén", "Laucha doméstica",
+            "Ratón doméstico", "Jabalí", "Visón", "Castor", "Ciervo rojo", "Paloma", "Paloma doméstica",
+            "Gorrión", "Codorniz", "Codorniz de California",
+        ],
+        "excluir_del_analisis": False,
     },
     "aves": {"clase": "Aves", "horario_baja_actividad": ["12:00", "17:00"], "umbral_pct": 50},
     "horarios": {

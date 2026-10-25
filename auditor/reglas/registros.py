@@ -287,41 +287,43 @@ def r07(ctx):
                 )
 
 
-@regla("R08", "Especie doméstica", INFO)
-def r08(ctx):
-    cfg = ctx.config["domesticas"]
-    cientificos = {clave(x) for x in cfg["nombres_cientificos"]}
-    comunes = {clave(x) for x in cfg["nombres_comunes"]}
-    for t, f, u in ctx.iter_registros():
-        if clave(u["especie"] or "") in cientificos or clave(u["nombre"]) in comunes or clave(u["nombre_bd"] or "") in comunes:
-            if cfg.get("excluir_del_analisis", True):
-                efecto = "no es fauna silvestre y queda fuera del análisis"
-                sugerencia = ("Se mantiene en la planilla; en base_limpia_larga.csv sale con excluir_motivo = "
-                              "'doméstica'. Si tu proyecto las incluye, pon excluir_del_analisis: false en config.yaml.")
-            else:
-                efecto = "se incluye en el análisis (excluir_del_analisis: false en config.yaml)"
-                sugerencia = "En base_limpia_larga.csv queda con origen = 'doméstica' para filtrarla si hace falta."
-            yield ctx.hallazgo(
-                "R08", t, f, "nombre_comun", f"Especie doméstica ({u['especie'] or u['nombre']}): {efecto}.", sugerencia,
-            )
-
-
-def es_introducida(config: dict, especie, nombre, nombre_bd) -> bool:
-    cfg = config.get("introducidas") or {}
+def _en_lista(cfg: dict, especie, nombre, nombre_bd) -> bool:
     cientificos = {clave(x) for x in cfg.get("nombres_cientificos", [])}
     comunes = {clave(x) for x in cfg.get("nombres_comunes", [])}
     return clave(especie or "") in cientificos or clave(nombre or "") in comunes or clave(nombre_bd or "") in comunes
 
 
-@regla("R25", "Especie introducida (exótica)", INFO)
+def es_domestica(config: dict, especie, nombre, nombre_bd) -> bool:
+    return _en_lista(config.get("domesticas") or {}, especie, nombre, nombre_bd)
+
+
+def es_exotica(config: dict, especie, nombre, nombre_bd) -> bool:
+    return (_en_lista(config.get("exoticas") or {}, especie, nombre, nombre_bd)
+            and not es_domestica(config, especie, nombre, nombre_bd))
+
+
+@regla("R08", "Especie doméstica", INFO)
+def r08(ctx):
+    for t, f, u in ctx.iter_registros():
+        if es_domestica(ctx.config, u["especie"], u["nombre"], u["nombre_bd"]):
+            yield ctx.hallazgo(
+                "R08", t, f, "nombre_comun",
+                f"Especie doméstica ({u['especie'] or u['nombre']}): va en la planilla que entregas, pero la LdB "
+                "de XPE no la cuenta en la lista de especies ni en los análisis.",
+                "No la borres. En base_limpia_larga.csv sale con origen = 'doméstica' y, salvo que elijas "
+                "incluirla en el análisis, con excluir_motivo = 'doméstica'.",
+            )
+
+
+@regla("R25", "Especie exótica", INFO)
 def r25(ctx):
     for t, f, u in ctx.iter_registros():
-        if es_introducida(ctx.config, u["especie"], u["nombre"], u["nombre_bd"]):
+        if es_exotica(ctx.config, u["especie"], u["nombre"], u["nombre_bd"]):
             yield ctx.hallazgo(
                 "R25", t, f, "nombre_comun",
-                f"Especie introducida en Chile ({u['especie'] or u['nombre']}): la línea de base la reporta, "
-                "pero conviene analizarla aparte de la fauna nativa.",
-                "No se excluye: en base_limpia_larga.csv queda con origen = 'introducida' para filtrarla en R o PAST.",
+                f"Especie exótica ({u['especie'] or u['nombre']}): entra en la lista de especies y en los "
+                "análisis, marcada como «Exótico» (criterio de la LdB de XPE).",
+                "No la borres. En base_limpia_larga.csv sale con origen = 'exótica' para identificarla o filtrarla.",
             )
 
 

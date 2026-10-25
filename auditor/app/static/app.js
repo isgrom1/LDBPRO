@@ -157,6 +157,8 @@ function iniciar() {
     }
   });
   $("#r-avisos").addEventListener("click", async (ev) => {
+    const origen = ev.target.closest("[data-origen] button");
+    if (origen) return elegirOrigen(origen);
     if (!ev.target.matches("[data-accion=reiniciar]")) return;
     if (!confirm("¿Borrar todas las decisiones guardadas y empezar de cero?")) return;
     await api("POST", `/api/sesiones/${E.sesion}/reiniciar`);
@@ -302,11 +304,64 @@ function renderRevision() {
       se recuperaron <b>${d.restauradas}</b> decisiones. <button class="enlace" data-accion="reiniciar">Empezar de cero</button></div>`);
   }
   d.avisos.forEach((a) => avisos.push(`<div class="alerta alerta-info">⚠️ ${esc(a)}</div>`));
+  avisos.push(htmlOrigen(d.origen));
   $("#r-avisos").innerHTML = avisos.join("");
   renderIndicadores();
   renderPuntaje();
   renderHerramientas();
   renderLista();
+}
+
+// Domésticas y exóticas: qué hacer con ellas y si entran en la base para PAST/R
+const GRUPOS_ORIGEN = {
+  domesticas: { titulo: "Domésticas", icono: "🐄", motivo: "doméstica" },
+  exoticas: { titulo: "Exóticas", icono: "🐇", motivo: "exótica" },
+};
+
+function htmlOrigen(origen) {
+  if (!origen || !Object.values(origen.especies).some((l) => l.length)) return "";
+  const grupos = Object.entries(GRUPOS_ORIGEN)
+    .filter(([g]) => origen.especies[g].length)
+    .map(([g, info]) => {
+      const especies = origen.especies[g]
+        .map((e) => `<span class="origen-especie" title="${esc(e.nombre_cientifico)} · ${esc(e.estaciones.join(", "))}">
+          ${esc(e.nombre_comun)} <small>${e.registros} reg.</small></span>`)
+        .join("");
+      const fuera = origen.excluir[g];
+      return `<div class="origen-grupo">
+        <div class="origen-especies"><b>${info.icono} ${info.titulo}</b>${especies}</div>
+        <div class="segmentado" data-origen="${g}" role="group" aria-label="${info.titulo} en el análisis">
+          <button data-excluir="1" class="${fuera ? "activo" : ""}">Fuera del análisis</button>
+          <button data-excluir="0" class="${fuera ? "" : "activo"}">Dentro del análisis</button>
+        </div>
+      </div>`;
+    })
+    .join("");
+  return `<div class="alerta alerta-origen">
+    <div class="origen-titulo">Especies domésticas y exóticas en esta planilla</div>
+    <p><b>En la planilla que entregas, déjalas tal cual:</b> se entregan todos los registros de terreno y el
+      auditor no borra ninguno.</p>
+    <p class="tenue">Para la lista de especies y los análisis, la LdB de XPE deja fuera el ganado, los perros y los
+      gatos por ser domésticos, y sí incluye las exóticas (conejo, liebre, gorrión, codorniz…), marcadas como «Exótico».
+      Ya viene elegido así; cámbialo solo si tu proyecto usa otro criterio.</p>
+    ${grupos}
+    <p class="tenue origen-nota">Esto solo cambia <code>base_limpia_larga.csv</code> (la tabla para PAST o R): las filas no
+      se borran, quedan marcadas en las columnas <code>origen</code> y <code>excluir_motivo</code>.</p>
+  </div>`;
+}
+
+async function elegirOrigen(boton) {
+  const grupo = boton.closest("[data-origen]").dataset.origen;
+  const excluir = boton.dataset.excluir === "1";
+  if (E.datos.origen.excluir[grupo] === excluir) return;
+  try {
+    const r = await api("POST", `/api/sesiones/${E.sesion}/origen`, { [grupo]: excluir });
+    E.datos.origen.excluir = r.excluir;
+    renderRevision();
+    aviso(`${GRUPOS_ORIGEN[grupo].titulo}: ${excluir ? "fuera del" : "dentro del"} análisis. Se aplica al generar.`);
+  } catch (e) {
+    aviso(e.message, true);
+  }
 }
 
 function renderIndicadores() {

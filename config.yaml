@@ -7,13 +7,15 @@ transecto:
   # E10: distancia máxima entre el punto de la estación y el punto medio del transecto
   distancia_max_estacion_a_punto_medio_m: 150
 
-# Ancho de banda del transecto por clase (m). Se usa para calcular el área
+# Ancho total de la banda del transecto por clase (m). Se usa para calcular el área
 # muestreada en base_limpia_larga.csv (área = largo × ancho) y así obtener densidades.
+# Valores de la LdB de XPE: herpetozoos 200 × 5 m; aves y mamíferos 200 × 50 m
+# (25 m a cada lado del eje).
 ancho_transecto_m:
   Aves: 50
-  Mamíferos: 20
-  Reptiles: 4
-  Anfibios: 4
+  Mamíferos: 50
+  Reptiles: 5
+  Anfibios: 5
 
 coordenadas:
   # E07: coordenada a más de esta distancia de la mediana de las estaciones
@@ -23,8 +25,10 @@ captura:
   # R16: coordenada de captura a más de esta distancia de su estación
   distancia_max_m: 300
 
-# R08: especies domésticas. Se marcan siempre; con excluir_del_analisis: true además salen
-# con excluir_motivo = 'doméstica' en base_limpia_larga.csv (la fila no se borra).
+# R08: especies domésticas. Van en la planilla que se entrega (no se borran), pero la LdB de XPE
+# no las considera en la lista de especies ni en los análisis. Con excluir_del_analisis: true
+# salen con excluir_motivo = 'doméstica' en base_limpia_larga.csv. En la aplicación se puede
+# cambiar por planilla.
 domesticas:
   excluir_del_analisis: true
   nombres_cientificos:
@@ -39,10 +43,14 @@ domesticas:
     - Ovis aries
     - Gallus gallus
     - Gallus gallus domesticus
+    - Sus scrofa domesticus
+    - Lama glama
+    - Vicugna pacos
   nombres_comunes:
     - Caballo
     - Caballo feral
     - Perro
+    - Perro asilvestrado
     - Gato
     - Gato doméstico
     - Vaca
@@ -50,13 +58,19 @@ domesticas:
     - Cabra
     - Oveja
     - Burro
+    - Mula
     - Gallina
+    - Cerdo
+    - Llama
+    - Alpaca
 
-# R25: especies introducidas (exóticas asilvestradas). Se marcan y quedan con
-# origen = 'introducida' en base_limpia_larga.csv, pero NO se excluyen: la LdB las reporta.
-introducidas:
-  nombres_cientificos: [Oryctolagus cuniculus, Lepus europaeus, Rattus rattus, Rattus norvegicus, Mus musculus, Sus scrofa, Neogale vison, Neovison vison, Castor canadensis, Cervus elaphus, Columba livia, Passer domesticus]
-  nombres_comunes: [Conejo, Conejo europeo, Liebre, Liebre europea, Rata negra, Guarén, Laucha doméstica, Ratón doméstico, Jabalí, Visón, Castor, Ciervo rojo, Paloma, Paloma doméstica, Gorrión]
+# R25: especies exóticas (introducidas y asilvestradas). En la LdB de XPE entran en la lista de
+# especies y en los análisis, marcadas como «Exótico»: quedan con origen = 'exótica' en
+# base_limpia_larga.csv y, salvo excluir_del_analisis: true, dentro del análisis.
+exoticas:
+  excluir_del_analisis: false
+  nombres_cientificos: [Oryctolagus cuniculus, Lepus europaeus, Rattus rattus, Rattus norvegicus, Mus musculus, Sus scrofa, Neogale vison, Neovison vison, Castor canadensis, Cervus elaphus, Columba livia, Passer domesticus, Callipepla californica]
+  nombres_comunes: [Conejo, Conejo europeo, Liebre, Liebre europea, Rata negra, Guarén, Laucha doméstica, Ratón doméstico, Jabalí, Visón, Castor, Ciervo rojo, Paloma, Paloma doméstica, Gorrión, Codorniz, Codorniz de California]
 
 aves:
   clase: Aves

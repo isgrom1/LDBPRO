@@ -29,6 +29,7 @@ from .reportes import (
     escribir_hallazgos_csv,
     escribir_reporte,
     filas_base_larga,
+    resumen_origen,
 )
 from .revision import escribir_revision
 from .texto import (
@@ -314,12 +315,32 @@ def proyectar(analisis: Analisis, decisiones: dict[str, Decision]) -> tuple[list
 # --------------------------------------------------------------------------- salidas
 
 
+GRUPOS_ORIGEN = ("domesticas", "exoticas")
+
+
+def exclusiones(config: dict, elegidas: dict | None = None) -> dict[str, bool]:
+    """Si las domésticas y las exóticas quedan fuera del análisis: lo del config, con lo que se eligió encima."""
+    out = {g: bool(config[g].get("excluir_del_analisis", g == "domesticas")) for g in GRUPOS_ORIGEN}
+    out.update({g: bool(v) for g, v in (elegidas or {}).items() if g in GRUPOS_ORIGEN})
+    return out
+
+
+def config_con_exclusiones(config: dict, elegidas: dict | None) -> dict:
+    if not elegidas:
+        return config
+    cfg = dict(config)
+    for g, v in exclusiones(config, elegidas).items():
+        cfg[g] = {**config[g], "excluir_del_analisis": v}
+    return cfg
+
+
 def generar(
     analisis: Analisis, carpeta: Path, decisiones: dict[str, Decision] | None = None,
-    solo_reporte: bool = False, con_libreoffice: bool = True, informar=print,
+    solo_reporte: bool = False, con_libreoffice: bool = True, informar=print, excluir: dict | None = None,
 ) -> Resultado:
+    """excluir: {"domesticas": bool, "exoticas": bool} para base_limpia_larga.csv (por defecto, el config)."""
     decisiones = decisiones or {}
-    cfg, libro, nombre = analisis.config, analisis.libro, analisis.nombre
+    cfg, libro, nombre = config_con_exclusiones(analisis.config, excluir), analisis.libro, analisis.nombre
     carpeta = Path(carpeta)
     cambios, resueltos = cambios_con_decisiones(analisis, decisiones)
     libro_despues = aplicar_en_memoria(libro, cambios)
@@ -378,6 +399,7 @@ def generar(
         avisos_cambios=analisis.avisos_cambios, verificacion=verificacion, estadisticas=estadisticas,
         config=cfg, solo_reporte=solo_reporte, archivos=[archivos[k].name for k in orden if k in archivos],
         decisiones={k: (analisis.por_clave[k], d) for k, d in decisiones.items() if k in analisis.por_clave},
+        origen=resumen_origen(ctx_base, cfg),
     )
     return Resultado(
         carpeta, nombre, libro, analisis.antes, despues, analisis.puntaje_antes, p_despues, cambios,

@@ -36,13 +36,16 @@ from ..formato import nombre_base, soffice_disponible
 from ..hallazgos import REGLAS, Hallazgo
 from ..modelo import HOJA_ESTACIONES, Libro
 from ..motor import Puntaje
+from ..reportes import resumen_origen
 from ..sesion import (
+    GRUPOS_ORIGEN,
     Analisis,
     Decision,
     ErrorDecision,
     Resultado,
     analizar,
     es_editable,
+    exclusiones,
     generar,
     preparar_decision,
     proyectar,
@@ -55,7 +58,7 @@ ESTATICOS = Path(__file__).resolve().parent / "static"
 MAX_SUBIDA = 200 * 1024 * 1024
 # Reglas donde escribir otro valor en la celda no resuelve nada: se decide con «está bien así»
 # o con las acciones sugeridas (p. ej. una estación sin registros o un duplicado).
-SIN_EDICION = {"E12", "R08", "R11", "R15", "T01", "X01", "X02"}
+SIN_EDICION = {"E12", "R08", "R11", "R15", "R25", "T01", "X01", "X02"}
 DESCRIPCIONES = {
     "corregida": "La planilla original con las correcciones. Conserva listas desplegables, fórmulas y formato.",
     "revision": "Copia para mirar: celdas coloreadas y comentadas, hojas RESUMEN y HALLAZGOS.",
@@ -120,6 +123,8 @@ class SesionApp:
         self.error: str | None = None
         self.resultado: Resultado | None = None
         self.restauradas = 0
+        # Domésticas / exóticas dentro o fuera de base_limpia_larga.csv; None = lo del config
+        self.excluir: dict[str, bool] | None = None
         self.version = 0
         self._proyeccion: tuple[int, dict] | None = None
         self.lock = threading.RLock()
@@ -132,6 +137,8 @@ class SesionApp:
             "actualizado": datetime.now().isoformat(timespec="seconds"),
             "decisiones": {k: d.a_dict() for k, d in self.decisiones.items()},
         }
+        if self.excluir is not None:
+            datos["excluir_del_analisis"] = self.excluir
         if self.analisis:
             datos["indice_antes"] = round(self.analisis.puntaje_antes.indice, 1)
             datos["estado_antes"] = self.analisis.puntaje_antes.estado
@@ -198,6 +205,7 @@ class SesionApp:
             "nombres_bd": sorted({limpiar(libro.nombres_bd.valor(f, "nombre_comun")) for f in libro.nombres_bd.filas_datos}),
             "decisiones": {_hash(k): self._decision_json(d) for k, d in self.decisiones.items()},
             "restauradas": self.restauradas, "n_cambios_auto": len(a.cambios_auto),
+            "origen": {"especies": resumen_origen(a.ctx, a.config), "excluir": exclusiones(a.config, self.excluir)},
         }
 
     @staticmethod
@@ -296,6 +304,7 @@ class Aplicacion:
         s = SesionApp(_hash(f"{carpeta}{time.time()}"), carpeta, d["archivo"], carpeta / d["original"], d["sha256"])
         s.decisiones = {k: Decision.de_dict(v) for k, v in d.get("decisiones", {}).items()}
         s.restauradas = len(s.decisiones)
+        s.excluir = d.get("excluir_del_analisis")
         return self._iniciar(s)
 
     def _iniciar(self, s: SesionApp) -> SesionApp:
@@ -336,7 +345,8 @@ class Aplicacion:
             with s.lock:
                 s.pasos.append(m)
         try:
-            r = generar(s.analisis, s.carpeta, dict(s.decisiones), con_libreoffice=self.con_libreoffice, informar=paso)
+            r = generar(s.analisis, s.carpeta, dict(s.decisiones), con_libreoffice=self.con_libreoffice,
+                        informar=paso, excluir=s.excluir)
             with s.lock:
                 s.resultado, s.estado = r, "generado"
                 s.pasos.append("Listo")
@@ -532,6 +542,14 @@ class Manejador(BaseHTTPRequestHandler):
                     if ruta is None or not ruta.exists():
                         return self._error("Ese archivo ya no existe", HTTPStatus.NOT_FOUND)
                     return self._json({"ok": abrir_en_explorador(ruta)})
+                if metodo == "POST" and accion == "origen" and s.analisis is not None:
+                    elegidas = self._leer_json()
+                    if not elegidas or any(g not in GRUPOS_ORIGEN or not isinstance(v, bool) for g, v in elegidas.items()):
+                        return self._error("Elección no válida")
+                    with s.lock:
+                        s.excluir = exclusiones(s.analisis.config, {**(s.excluir or {}), **elegidas})
+                    s.guardar()
+                    return self._json({"ok": True, "excluir": s.excluir})
                 if metodo == "POST" and accion == "reiniciar":
                     with s.lock:
                         s.decisiones.clear()

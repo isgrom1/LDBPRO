@@ -68,7 +68,7 @@ sobrescribe una auditoría anterior, que puede tener decisiones anotadas):
 | `<nombre>_CORREGIDA.xlsx` | El original con **solo** las auto-correcciones seguras, editado a nivel XML: conserva listas desplegables (`x14:dataValidation`), fórmulas y estilos; `fullCalcOnLoad="1"` para que Excel recalcule al abrir. |
 | `cambios_aplicados.csv` | hoja, celda, valor anterior, valor nuevo y regla de cada corrección. |
 | `reporte.md` | Puntaje antes/después, qué se corrigió solo, qué falta decidir agrupado por estación, verificación del archivo corregido y mapeo de columnas detectado. |
-| `base_limpia_larga.csv` | Tabla larga para R/PAST con las uniones rehechas en código. No borra filas: `origen` (doméstica / introducida / vacío si es nativa o no está en las listas), `excluir_motivo` (doméstica —configurable—, estación inexistente, especie fuera de nombres BD), `usar_en_abundancia` (no para evidencia indirecta o abundancia no válida) y largo/ancho/área de transecto para densidades. |
+| `base_limpia_larga.csv` | Tabla larga para R/PAST con las uniones rehechas en código. No borra filas: `origen` (doméstica / exótica / vacío si es nativa o no está en las listas), `excluir_motivo` (doméstica —se puede cambiar—, estación inexistente, especie fuera de nombres BD), `usar_en_abundancia` (no para evidencia indirecta o abundancia no válida) y largo/ancho/área de transecto para densidades. |
 | `hallazgos.csv` | Los mismos hallazgos de la hoja HALLAZGOS, en CSV. |
 
 Con `--solo-reporte` no se escriben `_CORREGIDA.xlsx` ni `cambios_aplicados.csv`; el reporte
@@ -134,7 +134,7 @@ muestra el puntaje *proyectado* tras las auto-correcciones.
 | R22 | Número guardado como texto (captura o abundancia) | 🟠 | Sí |
 | R23 | Observación menciona otra metodología | 🟡 | No |
 | R24 | Fila con datos pero sin ID Estación | 🟠 | No |
-| R25 | Especie introducida (conejo, liebre, rata, jabalí, visón…): se informa, no se excluye | 🟡 | No |
+| R25 | Especie exótica (conejo, liebre, gorrión, codorniz, guarén…): se informa, no se excluye | 🟡 | No |
 | B01 | Diccionario nombres BD con entradas problemáticas | 🟡 | No |
 | T01 | Plantilla: una fórmula y su lista de validación no coinciden (p. ej. «Huella» vs «Huellas») | 🟡 | Sí³ |
 | X01 | Columna de fórmula con un valor fijo | 🟠 | No |
@@ -145,10 +145,14 @@ deliberado para el informe. ² Solo si hay un valor mayoritario y la variante es
 typo claro (p. ej. «Punta del So» → «Punta del Sol»). ³ Corrige la celda de la lista en
 `validación datos` para que coincida con la fórmula (no toca los registros).
 
-R08 marca perros, gatos, caballos, vacas, cabras, ovejas y gallinas; con
-`domesticas.excluir_del_analisis: true` (por defecto) quedan con `excluir_motivo = doméstica`
-en la base larga. Las introducidas (R25) se marcan en `origen` pero siguen en el análisis,
-porque la línea de base las reporta. Las dos listas se editan en `config.yaml`.
+**Domésticas y exóticas.** Se sigue el criterio de la LdB de XPE: el ganado, los perros y los
+gatos se registran en terreno (van en la planilla que se entrega, no se borran), pero no entran
+en la lista de especies ni en los análisis; las exóticas (conejo, liebre, gorrión, codorniz,
+guarén…) sí entran, marcadas como «Exótico». En `base_limpia_larga.csv` quedan en la columna
+`origen`, y las domésticas con `excluir_motivo = doméstica`. En la aplicación, una tarjeta en la
+revisión las lista y permite dejar cada grupo dentro o fuera del análisis para esa planilla; en
+la línea de comandos se usa `excluir_del_analisis` de `config.yaml`, donde también están las
+listas.
 
 E14, E15, R21–R25, B01, T01, X01 y X02 son adicionales a la lista original.
 
@@ -185,10 +189,11 @@ El «después» se calcula volviendo a leer y auditar el archivo `_CORREGIDA.xls
 ## Configuración
 
 `config.yaml` trae los umbrales de largo de transecto, ancho de transecto por clase,
-especies domésticas e introducidas, distancia máxima de captura, horario de actividad de aves
+especies domésticas y exóticas, distancia máxima de captura, horario de actividad de aves
 y el horario nocturno de los playback. El resto de los
 parámetros (y sus valores por defecto) está en `auditor/config.py`; cualquiera se puede
-sobrescribir desde el YAML.
+sobrescribir desde el YAML. Los anchos de transecto son los de la LdB de XPE:
+reptiles y anfibios 200 × 5 m, aves y mamíferos 200 × 50 m.
 
 ## Pruebas
 

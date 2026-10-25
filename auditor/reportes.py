@@ -12,7 +12,7 @@ from .contexto import Contexto
 from .hallazgos import REGLAS, Hallazgo, Severidad
 from .modelo import Libro, tabla_mapeo
 from .motor import Cambio, Puntaje, formula_puntaje
-from .reglas.registros import es_introducida
+from .reglas.registros import es_domestica, es_exotica
 from .texto import clave, mostrar
 from .verificacion import Verificacion
 
@@ -66,8 +66,6 @@ COLUMNAS_BASE = [
 
 def filas_base_larga(libro: Libro, ctx: Contexto, hallazgos: list[Hallazgo], config: dict) -> list[dict]:
     """Tabla larga para R/PAST con las uniones rehechas en código. No se borran filas."""
-    dom_cient = {clave(x) for x in config["domesticas"]["nombres_cientificos"]}
-    dom_comun = {clave(x) for x in config["domesticas"]["nombres_comunes"]}
     anchos = {clave(k): v for k, v in config["ancho_transecto_m"].items()}
     transecto = clave(config["horarios"]["metodologia_transecto"])
     por_fila = defaultdict(set)
@@ -78,10 +76,13 @@ def filas_base_larga(libro: Libro, ctx: Contexto, hallazgos: list[Hallazgo], con
     for t, f, u in ctx.iter_registros():
         g = u["est_fila_flex"]
         motivos = []
-        domestica = clave(u["especie"] or "") in dom_cient or clave(u["nombre"]) in dom_comun or clave(u["nombre_bd"] or "") in dom_comun
-        origen = "doméstica" if domestica else "introducida" if es_introducida(config, u["especie"], u["nombre"], u["nombre_bd"]) else ""
+        domestica = es_domestica(config, u["especie"], u["nombre"], u["nombre_bd"])
+        exotica = es_exotica(config, u["especie"], u["nombre"], u["nombre_bd"])
+        origen = "doméstica" if domestica else "exótica" if exotica else ""
         if domestica and config["domesticas"].get("excluir_del_analisis", True):
             motivos.append("doméstica")
+        if exotica and config["exoticas"].get("excluir_del_analisis", False):
+            motivos.append("exótica")
         if g is None:
             motivos.append("estación no existe en Estaciones")
         if not u["especie"]:
@@ -116,6 +117,62 @@ def filas_base_larga(libro: Libro, ctx: Contexto, hallazgos: list[Hallazgo], con
             "fila": f,
         })
     return out
+
+
+def resumen_origen(ctx: Contexto, config: dict) -> dict[str, list[dict]]:
+    """Especies domésticas y exóticas de la planilla, con sus registros, individuos y estaciones."""
+    grupos: dict[str, dict] = {"domesticas": {}, "exoticas": {}}
+    for _, _, u in ctx.iter_registros():
+        if es_domestica(config, u["especie"], u["nombre"], u["nombre_bd"]):
+            grupo = grupos["domesticas"]
+        elif es_exotica(config, u["especie"], u["nombre"], u["nombre_bd"]):
+            grupo = grupos["exoticas"]
+        else:
+            continue
+        e = grupo.setdefault(clave(u["especie"] or u["nombre_bd"] or u["nombre"]), {
+            "nombre_comun": u["nombre_bd"] or u["nombre"], "nombre_cientifico": u["especie"] or "",
+            "registros": 0, "individuos": 0, "estaciones": set(),
+        })
+        e["registros"] += 1
+        n = u["abundancia"]
+        if n is not None and n > 0 and float(n).is_integer():
+            e["individuos"] += int(n)
+        if u["id"]:
+            e["estaciones"].add(u["id"])
+    return {
+        k: [{**e, "estaciones": sorted(e["estaciones"], key=_orden_natural)}
+            for e in sorted(g.values(), key=lambda e: (-e["registros"], e["nombre_comun"]))]
+        for k, g in grupos.items()
+    }
+
+
+def _describir_especie(e: dict) -> str:
+    nombre = e["nombre_comun"] + (f" (*{e['nombre_cientifico']}*)" if e["nombre_cientifico"] else "")
+    registros = f"{e['registros']} registro" + ("s" if e["registros"] != 1 else "")
+    return f"{nombre}: {registros}, {e['individuos']} ind., {', '.join(e['estaciones'])}"
+
+
+def _lineas_origen(origen: dict[str, list[dict]], config: dict) -> list[str]:
+    if not any(origen.values()):
+        return []
+    criterio = (
+        "Criterio de la LdB de XPE: el ganado, los perros y los gatos se registran en terreno, pero no se "
+        "consideran en la lista de especies ni en los análisis por ser domésticos; las especies exóticas "
+        "(conejo, liebre, gorrión, codorniz, guarén…) sí entran, marcadas como «Exótico»."
+    )
+    L = ["## Especies domésticas y exóticas", "", criterio, "",
+         "- **En la planilla que entregas** van todos los registros: el auditor no borra ninguno."]
+    for grupo, titulo in (("domesticas", "Domésticas"), ("exoticas", "Exóticas")):
+        especies = origen.get(grupo) or []
+        if not especies:
+            continue
+        excluir = config[grupo].get("excluir_del_analisis", grupo == "domesticas")
+        efecto = (f"**fuera del análisis** (`excluir_motivo = {'doméstica' if grupo == 'domesticas' else 'exótica'}`)"
+                  if excluir else "**dentro del análisis**")
+        L.append(f"- **{titulo}** — en `base_limpia_larga.csv` quedan {efecto}: "
+                 + "; ".join(_describir_especie(e) for e in especies) + ".")
+    L.append("")
+    return L
 
 
 def escribir_base_larga(ruta: Path, filas: list[dict]) -> None:
@@ -155,9 +212,9 @@ def escribir_reporte(
     ruta: Path, *, nombre: str, libro: Libro, antes: Puntaje, despues: Puntaje,
     hallazgos_antes: list[Hallazgo], hallazgos_despues: list[Hallazgo], cambios: list[Cambio],
     avisos_cambios: list[str], verificacion: Verificacion | None, estadisticas: dict, config: dict,
-    solo_reporte: bool, archivos: list[str], decisiones: dict | None = None,
+    solo_reporte: bool, archivos: list[str], decisiones: dict | None = None, origen: dict | None = None,
 ) -> None:
-    """decisiones: clave -> (hallazgo, Decision) tomadas en la aplicación."""
+    """decisiones: clave -> (hallazgo, Decision) tomadas en la aplicación; origen: resumen_origen()."""
     decisiones = decisiones or {}
     manuales = [c for c in cambios if any(r.startswith("MANUAL") for r in c.reglas)]
     automaticos = [c for c in cambios if c not in manuales]
@@ -279,6 +336,7 @@ def escribir_reporte(
     if sin_registros:
         L.append(f"- Estaciones sin registros (cuentan como 0, no se borran): {', '.join(sorted(sin_registros, key=_orden_natural))}.")
     L.append("")
+    L += _lineas_origen(origen or {}, config)
 
     if verificacion is not None:
         v = verificacion

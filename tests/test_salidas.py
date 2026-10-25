@@ -83,6 +83,9 @@ def test_base_limpia_larga(resultado):
     caballo = next(f for f in filas if f["nombre_cientifico"] == "Equus caballus")
     assert caballo["excluir_motivo"] == "doméstica" and caballo["usar_en_abundancia"] == "no"
     assert caballo["origen"] == "doméstica"
+    assert all(f["excluir_motivo"] != "exótica" for f in filas)  # las exóticas entran (criterio LdB XPE)
+    transecto = next(f for f in filas if f["area_muestreada_m2"] and f["clase"] == "Reptiles")
+    assert transecto["ancho_transecto_m"] == "5"
     rhinella = next(f for f in filas if f["nombre_comun"] == "Rhinella spp.")
     assert "nombres BD" in rhinella["excluir_motivo"]
     gay = [f for f in filas if f["nombre_cientifico"] == "Phrygilus gayi"]
@@ -95,7 +98,8 @@ def test_base_limpia_larga(resultado):
 def test_reporte_md(resultado):
     md = resultado.archivos["reporte"].read_text(encoding="utf-8")
     for texto in ("## Puntaje de calidad", "## Qué se corrigió solo", "## Qué falta decidir", "### PMF34",
-                  "## Verificación del archivo corregido", "## Mapeo de columnas detectado", "Fórmula:"):
+                  "## Verificación del archivo corregido", "## Mapeo de columnas detectado", "Fórmula:",
+                  "## Especies domésticas y exóticas"):
         assert texto in md
 
 
