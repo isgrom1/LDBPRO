@@ -46,12 +46,15 @@ def test_formulas_y_estilos_intactos(planilla, corregida):
         assert a.read("xl/sharedStrings.xml") == b.read("xl/sharedStrings.xml")
         assert 'fullCalcOnLoad="1"' in b.read("xl/workbook.xml").decode()
         cambiadas = [n for n in a.namelist() if a.read(n) != b.read(n)]
-        assert set(cambiadas) == {"xl/workbook.xml", "xl/worksheets/sheet2.xml", "xl/worksheets/sheet3.xml"}
+        # Estaciones, Registros y 'validación datos' (T01 corrige la lista de la plantilla)
+        assert set(cambiadas) == {
+            "xl/workbook.xml", "xl/worksheets/sheet2.xml", "xl/worksheets/sheet3.xml", "xl/worksheets/sheet6.xml",
+        }
 
 
 def test_solo_cambian_las_celdas_auto_corregidas(resultado):
     v = resultado.verificacion
-    assert v.celdas_ok and len(v.celdas_distintas) == len(resultado.cambios) == 126
+    assert v.celdas_ok and len(v.celdas_distintas) == len(resultado.cambios) == 128
 
 
 def test_valores_corregidos(planilla, corregida):

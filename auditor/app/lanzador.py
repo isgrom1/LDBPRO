@@ -1,13 +1,15 @@
 """Punto de entrada de la aplicación (lo que ejecuta AuditorXPE.exe).
 
-Levanta el servidor local, abre la interfaz en el navegador y muestra una ventanita de control
-para reabrir la interfaz, abrir la carpeta de resultados o cerrar el programa.
+La interfaz se muestra en una ventana propia (pywebview con WebView2, el motor de Edge que
+trae Windows 10 y 11). El trabajo lo hace un servidor local, en un puerto libre que solo
+atiende a este equipo. Si la ventana propia no se puede abrir, se usa el navegador.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import tempfile
 import threading
@@ -21,8 +23,9 @@ from .. import __version__
 from ..config import cargar_config
 from .servidor import Aplicacion, abrir_en_explorador, crear_servidor
 
-PUERTO = 8765
-INACTIVIDAD_MAX = 30 * 60  # segundos sin la interfaz abierta antes de cerrarse solo
+INACTIVIDAD_MAX = 30 * 60  # modo navegador: segundos sin la interfaz abierta antes de cerrarse solo
+ARCHIVO_INSTANCIA = "instancia.json"
+_MUTEX = None  # se mantiene vivo mientras corre el programa
 
 
 def carpeta_por_defecto() -> Path:
@@ -45,12 +48,89 @@ def cargar_config_usuario(carpeta: Path) -> tuple[dict, Path | None]:
     return cargar_config(), None
 
 
-def instancia_abierta(puerto: int) -> bool:
+# --------------------------------------------------------------------------- una sola copia
+
+
+def _primera_instancia() -> bool:
+    """En Windows, un mutex con nombre garantiza que haya una sola copia del programa abierta."""
+    global _MUTEX
+    if not sys.platform.startswith("win"):
+        return True
+    import ctypes
+
+    kernel32 = ctypes.windll.kernel32
+    _MUTEX = kernel32.CreateMutexW(None, False, "Local\\AuditorXPE_unica")
+    return kernel32.GetLastError() != 183  # ERROR_ALREADY_EXISTS
+
+
+def _avisar_a_la_abierta(carpeta: Path) -> bool:
+    """Pide a la copia que ya está abierta que traiga su ventana al frente."""
     try:
-        with urllib.request.urlopen(f"http://127.0.0.1:{puerto}/api/info", timeout=0.7) as r:
-            return json.loads(r.read().decode("utf-8")).get("app") == "Auditor XPE"
-    except (OSError, ValueError):
+        puerto = json.loads((carpeta / ARCHIVO_INSTANCIA).read_text(encoding="utf-8"))["puerto"]
+        pedido = urllib.request.Request(
+            f"http://127.0.0.1:{puerto}/api/mostrar", data=b"{}", method="POST",
+            headers={"X-Auditor": "1", "Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(pedido, timeout=3) as r:
+            r.read()
+        return True
+    except (OSError, ValueError, KeyError):
         return False
+
+
+def _mensaje(texto: str) -> None:
+    if sys.platform.startswith("win"):
+        import ctypes
+
+        ctypes.windll.user32.MessageBoxW(None, texto, "Auditor XPE", 0x40)
+    else:
+        print(texto)
+
+
+# --------------------------------------------------------------------------- ventanas
+
+
+def _ventana_propia(app: Aplicacion, url: str) -> bool:
+    """Muestra la interfaz en una ventana nativa. False si pywebview o WebView2 no están."""
+    try:
+        import webview
+    except Exception:
+        return False
+    try:
+        webview.settings["ALLOW_DOWNLOADS"] = True
+        ventana = webview.create_window(
+            "Auditor XPE", url, width=1360, height=880, min_size=(980, 640), text_select=True
+        )
+    except Exception:
+        traceback.print_exc()
+        return False
+
+    def al_mostrar():
+        try:
+            ventana.restore()
+            ventana.show()
+            ventana.on_top = True
+            ventana.on_top = False
+        except Exception:
+            pass
+
+    def cerrar_si_lo_piden():  # botón «Cerrar» de la interfaz
+        app.cerrar.wait()
+        try:
+            ventana.destroy()
+        except Exception:
+            pass
+
+    app.al_mostrar, app.escritorio = al_mostrar, True
+    threading.Thread(target=cerrar_si_lo_piden, daemon=True).start()
+    try:
+        # En Windows se exige WebView2: sin él pywebview usaría Internet Explorer, que no sirve.
+        webview.start(gui="edgechromium" if sys.platform.startswith("win") else None, private_mode=True)
+    except Exception:
+        traceback.print_exc()
+        app.al_mostrar, app.escritorio = None, False
+        return False
+    return True
 
 
 def _vigilar_inactividad(app: Aplicacion) -> None:
@@ -60,8 +140,11 @@ def _vigilar_inactividad(app: Aplicacion) -> None:
             app.cerrar.set()
 
 
-def _ventana(app: Aplicacion, url: str) -> bool:
-    """Ventana de control. Devuelve False si no hay entorno gráfico (se sigue sin ventana)."""
+def _ventana_control(app: Aplicacion, url: str) -> bool:
+    """Respaldo del modo navegador: ventanita para reabrir la interfaz o cerrar el programa.
+
+    Devuelve False si no hay entorno gráfico.
+    """
     try:
         import tkinter as tk
         from tkinter import ttk
@@ -108,6 +191,7 @@ def _ventana(app: Aplicacion, url: str) -> bool:
     revisar()
     raiz.mainloop()
     return True
+
 
 
 def autoprueba(registro: Path) -> int:
@@ -172,48 +256,119 @@ def autoprueba(registro: Path) -> int:
         return 1
 
 
+def autoprueba_ventana(registro: Path) -> int:
+    """Abre la ventana propia, carga la planilla de ejemplo desde la interfaz y la cierra."""
+    lineas = []
+
+    def anotar(texto):
+        lineas.append(texto)
+        registro.write_text("\n".join(lineas), encoding="utf-8")
+        print(texto, flush=True)
+
+    try:
+        import webview
+    except Exception:
+        anotar("pywebview no está instalado\n" + traceback.format_exc())
+        return 1
+    resultado = {"ok": False}
+    with tempfile.TemporaryDirectory(prefix="autoprueba_ventana_") as tmp:
+        app = Aplicacion(Path(tmp) / "Auditor XPE", con_libreoffice=False)
+        servidor = crear_servidor(app, 0)
+        threading.Thread(target=servidor.serve_forever, daemon=True).start()
+        ventana = webview.create_window("Auditor XPE (autoprueba)", f"http://127.0.0.1:{servidor.server_address[1]}/")
+
+        def esperar(expresion, segundos):
+            limite = time.monotonic() + segundos
+            while time.monotonic() < limite:
+                if ventana.evaluate_js(expresion):
+                    return True
+                time.sleep(0.5)
+            return False
+
+        def probar():
+            try:
+                cargo = esperar("!!document.querySelector('#zona-carga')", 60)
+                anotar(f"Interfaz cargada en la ventana: {cargo}")
+                ventana.evaluate_js("document.querySelector('#btn-ejemplo').click()")
+                revision = esperar("!document.querySelector('#vista-revision').hidden", 120)
+                n = ventana.evaluate_js("document.querySelectorAll('.hallazgo').length")
+                anotar(f"Vista de revisión: {revision}; tarjetas de hallazgos: {n}")
+                resultado["ok"] = bool(cargo and revision and n)
+            except Exception:
+                anotar(traceback.format_exc())
+            finally:
+                ventana.destroy()
+
+        try:
+            webview.start(probar, gui="edgechromium" if sys.platform.startswith("win") else None, private_mode=True)
+        except Exception:
+            anotar("No se pudo abrir la ventana\n" + traceback.format_exc())
+        servidor.shutdown()
+        servidor.server_close()
+    anotar("AUTOPRUEBA VENTANA OK" if resultado["ok"] else "AUTOPRUEBA VENTANA FALLÓ")
+    return 0 if resultado["ok"] else 1
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="AuditorXPE", description="Auditor de planillas de fauna XPE")
-    ap.add_argument("--puerto", type=int, default=PUERTO)
+    ap.add_argument("--puerto", type=int, default=0, help="Puerto del servidor local (por defecto, uno libre)")
     ap.add_argument("--carpeta", help="Carpeta donde se guardan las revisiones (por defecto Documentos/Auditor XPE)")
-    ap.add_argument("--sin-navegador", action="store_true", help="No abrir el navegador")
+    ap.add_argument("--navegador", action="store_true", help="Usar el navegador en vez de la ventana propia")
+    ap.add_argument("--sin-navegador", action="store_true", help="Modo servidor: no abrir ventana ni navegador")
     ap.add_argument("--sin-ventana", action="store_true", help="Sin ventana de control (Ctrl+C para salir)")
     ap.add_argument("--autoprueba", action="store_true", help="Probar la aplicación con la planilla de ejemplo y salir")
+    ap.add_argument("--autoprueba-ventana", action="store_true", help="Probar la ventana propia y salir")
     ap.add_argument("--version", action="version", version=f"Auditor XPE {__version__}")
     args = ap.parse_args(argv)
 
     if args.autoprueba:
         return autoprueba(Path(tempfile.gettempdir()) / "AuditorXPE_autoprueba.log")
+    if args.autoprueba_ventana:
+        return autoprueba_ventana(Path(tempfile.gettempdir()) / "AuditorXPE_autoprueba_ventana.log")
 
-    if instancia_abierta(args.puerto):
-        webbrowser.open(f"http://127.0.0.1:{args.puerto}/")
-        return 0
     carpeta = Path(args.carpeta) if args.carpeta else carpeta_por_defecto()
     carpeta.mkdir(parents=True, exist_ok=True)
+    if not _primera_instancia():
+        if not _avisar_a_la_abierta(carpeta):
+            _mensaje("El Auditor XPE ya está abierto.")
+        return 0
     if sys.stdout is None or sys.stderr is None:
         # El .exe no tiene consola: los mensajes y errores quedan en registro.log
         registro = open(carpeta / "registro.log", "a", encoding="utf-8", buffering=1)  # noqa: SIM115
         sys.stdout = sys.stderr = registro
+    print(f"--- {time.strftime('%Y-%m-%d %H:%M:%S')} Auditor XPE {__version__}", flush=True)
     config, _ = cargar_config_usuario(carpeta)
     app = Aplicacion(carpeta, config)
     try:
         servidor = crear_servidor(app, args.puerto)
     except OSError:
-        servidor = crear_servidor(app, 0)  # el puerto está ocupado por otro programa
+        servidor = crear_servidor(app, 0)  # el puerto pedido está ocupado
     url = f"http://127.0.0.1:{servidor.server_address[1]}/"
     threading.Thread(target=servidor.serve_forever, daemon=True).start()
-    threading.Thread(target=_vigilar_inactividad, args=(app,), daemon=True).start()
-    if not args.sin_navegador:
-        webbrowser.open(url)
-    print(f"Auditor XPE en {url} — resultados en {carpeta}", flush=True)
+    (carpeta / ARCHIVO_INSTANCIA).write_text(
+        json.dumps({"puerto": servidor.server_address[1], "pid": os.getpid()}), encoding="utf-8"
+    )
+    print(f"Servidor en {url} — resultados en {carpeta}", flush=True)
     try:
-        if args.sin_ventana or not _ventana(app, url):
-            while not app.cerrar.wait(1):
-                pass
+        propia = not (args.navegador or args.sin_navegador or args.sin_ventana) and _ventana_propia(app, url)
+        if not propia:
+            app.al_mostrar = lambda: webbrowser.open(url)
+            threading.Thread(target=_vigilar_inactividad, args=(app,), daemon=True).start()
+            if not args.sin_navegador:
+                webbrowser.open(url)
+            if args.sin_ventana or not _ventana_control(app, url):
+                while not app.cerrar.wait(1):
+                    pass
     except KeyboardInterrupt:
         pass
-    servidor.shutdown()
-    servidor.server_close()
+    finally:
+        app.cerrar.set()
+        servidor.shutdown()
+        servidor.server_close()
+        try:
+            (carpeta / ARCHIVO_INSTANCIA).unlink()
+        except OSError:
+            pass
     return 0
 
 

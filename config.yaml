@@ -23,8 +23,10 @@ captura:
   # R16: coordenada de captura a más de esta distancia de su estación
   distancia_max_m: 300
 
-# R08: especies domésticas (se marcan y se excluyen de base_limpia_larga.csv)
+# R08: especies domésticas. Se marcan siempre; con excluir_del_analisis: true además salen
+# con excluir_motivo = 'doméstica' en base_limpia_larga.csv (la fila no se borra).
 domesticas:
+  excluir_del_analisis: true
   nombres_cientificos:
     - Equus caballus
     - Equus asinus
@@ -50,6 +52,12 @@ domesticas:
     - Burro
     - Gallina
 
+# R25: especies introducidas (exóticas asilvestradas). Se marcan y quedan con
+# origen = 'introducida' en base_limpia_larga.csv, pero NO se excluyen: la LdB las reporta.
+introducidas:
+  nombres_cientificos: [Oryctolagus cuniculus, Lepus europaeus, Rattus rattus, Rattus norvegicus, Mus musculus, Sus scrofa, Neogale vison, Neovison vison, Castor canadensis, Cervus elaphus, Columba livia, Passer domesticus]
+  nombres_comunes: [Conejo, Conejo europeo, Liebre, Liebre europea, Rata negra, Guarén, Laucha doméstica, Ratón doméstico, Jabalí, Visón, Castor, Ciervo rojo, Paloma, Paloma doméstica, Gorrión]
+
 aves:
   clase: Aves
   # R11: horario de baja actividad de aves (registros en transecto)
@@ -58,7 +66,7 @@ aves:
   umbral_pct: 50
 
 horarios:
-  # R12
-  nocturno: ["19:00", "06:00"]
-  metodologias_nocturnas: [Playback anfibios]
-  sherman_revision: ["06:00", "12:00"]
+  # R12: los playback (aves y anfibios) se hacen de noche; solo se marca uno hecho
+  # claramente de día, fuera de este rango
+  nocturno: ["18:00", "07:00"]
+  metodologias_nocturnas: [Playback aves, Playback anfibios]

@@ -12,6 +12,7 @@ from .contexto import Contexto
 from .hallazgos import REGLAS, Hallazgo, Severidad
 from .modelo import Libro, tabla_mapeo
 from .motor import Cambio, Puntaje, formula_puntaje
+from .reglas.registros import es_introducida
 from .texto import clave, mostrar
 from .verificacion import Verificacion
 
@@ -59,7 +60,7 @@ def escribir_hallazgos_csv(
 COLUMNAS_BASE = [
     "estacion", "ambiente", "clase", "nombre_cientifico", "nombre_comun", "metodologia", "tipo_registro",
     "abundancia", "fecha", "hora", "directo_indirecto", "usar_en_abundancia", "largo_transecto_m",
-    "ancho_transecto_m", "area_muestreada_m2", "excluir_motivo", "hallazgos_pendientes", "hoja", "fila",
+    "ancho_transecto_m", "area_muestreada_m2", "origen", "excluir_motivo", "hallazgos_pendientes", "hoja", "fila",
 ]
 
 
@@ -77,7 +78,9 @@ def filas_base_larga(libro: Libro, ctx: Contexto, hallazgos: list[Hallazgo], con
     for t, f, u in ctx.iter_registros():
         g = u["est_fila_flex"]
         motivos = []
-        if clave(u["especie"] or "") in dom_cient or clave(u["nombre"]) in dom_comun or clave(u["nombre_bd"] or "") in dom_comun:
+        domestica = clave(u["especie"] or "") in dom_cient or clave(u["nombre"]) in dom_comun or clave(u["nombre_bd"] or "") in dom_comun
+        origen = "doméstica" if domestica else "introducida" if es_introducida(config, u["especie"], u["nombre"], u["nombre_bd"]) else ""
+        if domestica and config["domesticas"].get("excluir_del_analisis", True):
             motivos.append("doméstica")
         if g is None:
             motivos.append("estación no existe en Estaciones")
@@ -106,6 +109,7 @@ def filas_base_larga(libro: Libro, ctx: Contexto, hallazgos: list[Hallazgo], con
             "largo_transecto_m": round(largo, 1) if largo is not None else "",
             "ancho_transecto_m": ancho if ancho is not None else "",
             "area_muestreada_m2": round(largo * ancho) if largo is not None and ancho is not None else "",
+            "origen": origen,
             "excluir_motivo": "; ".join(motivos),
             "hallazgos_pendientes": ";".join(sorted(por_fila.get((t.hoja, f), set()))),
             "hoja": t.hoja,

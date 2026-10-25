@@ -7,7 +7,7 @@ import re
 
 from ..contexto import texto_id
 from ..hallazgos import Accion, Severidad, regla
-from ..modelo import HOJA_BD, HOJA_ESTACIONES
+from ..modelo import HOJA_BD, HOJA_ESTACIONES, Libro
 from ..texto import (
     a_numero,
     clave,
@@ -60,15 +60,22 @@ def b01(ctx):
                 )
 
 
-@regla("T01", "Plantilla: una fórmula y su lista de validación no coinciden", INFO)
+@regla("T01", "Plantilla: una fórmula y su lista de validación no coinciden", INFO, auto_corregible=True)
 def t01(ctx):
+    """Se corrige la lista de 'validación datos' (una celda) para que coincida con la fórmula,
+    en vez de reescribir las fórmulas de cientos de filas."""
     yield from _t01_directo_indirecto(ctx)
     yield from _t01_comportamiento(ctx)
+
+
+def _fila(celda: str) -> int:
+    return int(re.sub(r"[A-Z]", "", celda))
 
 
 def _t01_comportamiento(ctx):
     """La fórmula de ayuda de Comportamiento escribe valores que no están en la lista."""
     lista = ctx.libro.listas.get("comportamiento") or []
+    refs = ctx.libro.listas_refs.get("comportamiento") or []
     opciones = {clave(x): x for x in lista}
     for t in ctx.libro.registros:
         if not t.tiene("comportamiento") or not lista:
@@ -82,14 +89,24 @@ def _t01_comportamiento(ctx):
         for v, filas in por_valor.items():
             parecido = difflib.get_close_matches(clave(v), list(opciones), n=1, cutoff=0.6)
             formula = t.formulas.at[filas[0], "comportamiento"]
-            yield ctx.hallazgo(
-                "T01", t, None, None,
+            problema = (
                 f"La fórmula de ayuda de Comportamiento ({formula}) escribe '{v}', que no está en la lista "
                 f"de 'validación datos'{f' (la lista dice {opciones[parecido[0]]!r})' if parecido else ''}. "
-                f"Afecta a {len(filas)} registros.",
-                "Corrige la fórmula de la plantilla o la lista para que usen el mismo término.",
-                celda=f"{t.columnas['comportamiento']}{t.fila_encabezado}", valor=v,
+                f"Afecta a {len(filas)} registros."
             )
+            if parecido and len(refs) == len(lista):
+                hoja, celda = refs[lista.index(opciones[parecido[0]])]
+                yield ctx.hallazgo(
+                    "T01", hoja, _fila(celda), f"{Libro.PREFIJO_LISTA}comportamiento", problema,
+                    f"Se cambia «{opciones[parecido[0]]}» por «{v}» en la lista, igual que la fórmula.",
+                    celda=celda, valor=opciones[parecido[0]], correccion=v,
+                )
+            else:
+                yield ctx.hallazgo(
+                    "T01", t, None, None, problema,
+                    "Corrige la fórmula de la plantilla o la lista para que usen el mismo término.",
+                    celda=f"{t.columnas['comportamiento']}{t.fila_encabezado}", valor=v,
+                )
 
 
 def _t01_directo_indirecto(ctx):
@@ -104,14 +121,21 @@ def _t01_directo_indirecto(ctx):
             (x for x in di.get("Directo", []) + di.get("Indirecto", []) if clave(x) in (clave(valor) + "s", clave(valor)[:-1])),
             None,
         )
-        yield ctx.hallazgo(
-            "T01", hoja or "validación datos", None, None,
+        problema = (
             f"La lista de tipos de registro ofrece '{valor}', pero la fórmula Directo/Indirecto de "
-            f"Registros no lo reconoce{f' (espera {pista!r})' if pista else ''}: quien lo elija obtiene 'REVISAR'.",
-            f"Corrige la plantilla: usa '{pista}' en la lista o agrega '{valor}' a la fórmula."
-            if pista else f"Agrega '{valor}' a la fórmula de Directo/Indirecto.",
-            celda=celda, valor=valor,
+            f"Registros no lo reconoce{f' (espera {pista!r})' if pista else ''}: quien lo elija obtiene 'REVISAR'."
         )
+        if pista and celda:
+            yield ctx.hallazgo(
+                "T01", hoja, _fila(celda), f"{Libro.PREFIJO_LISTA}tipo_registro", problema,
+                f"Se cambia «{valor}» por «{pista}» en la lista, igual que la fórmula.",
+                celda=celda, valor=valor, correccion=pista,
+            )
+        else:
+            yield ctx.hallazgo(
+                "T01", hoja or "validación datos", None, None, problema,
+                f"Agrega '{valor}' a la fórmula de Directo/Indirecto.", celda=celda, valor=valor,
+            )
 
 
 @regla("X01", "Columna de fórmula con un valor fijo", ADV)

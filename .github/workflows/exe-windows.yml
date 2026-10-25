@@ -37,6 +37,15 @@ jobs:
           Get-Content "$env:TEMP\AuditorXPE_autoprueba.log"
           if ($p.ExitCode -ne 0) { exit 1 }
 
+      - name: Autoprueba de la ventana propia (WebView2)
+        shell: pwsh
+        timeout-minutes: 4
+        continue-on-error: true
+        run: |
+          $p = Start-Process -FilePath dist\AuditorXPE.exe -ArgumentList "--autoprueba-ventana" -Wait -PassThru
+          Get-Content "$env:TEMP\AuditorXPE_autoprueba_ventana.log"
+          if ($p.ExitCode -ne 0) { exit 1 }
+
       - uses: actions/upload-artifact@v4
         with:
           name: AuditorXPE-windows

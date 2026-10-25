@@ -294,10 +294,34 @@ def r08(ctx):
     comunes = {clave(x) for x in cfg["nombres_comunes"]}
     for t, f, u in ctx.iter_registros():
         if clave(u["especie"] or "") in cientificos or clave(u["nombre"]) in comunes or clave(u["nombre_bd"] or "") in comunes:
+            if cfg.get("excluir_del_analisis", True):
+                efecto = "no es fauna silvestre y queda fuera del análisis"
+                sugerencia = ("Se mantiene en la planilla; en base_limpia_larga.csv sale con excluir_motivo = "
+                              "'doméstica'. Si tu proyecto las incluye, pon excluir_del_analisis: false en config.yaml.")
+            else:
+                efecto = "se incluye en el análisis (excluir_del_analisis: false en config.yaml)"
+                sugerencia = "En base_limpia_larga.csv queda con origen = 'doméstica' para filtrarla si hace falta."
             yield ctx.hallazgo(
-                "R08", t, f, "nombre_comun",
-                f"Especie doméstica ({u['especie'] or u['nombre']}): no es fauna silvestre y se excluye del análisis.",
-                "Se mantiene en la planilla; en base_limpia_larga.csv sale con excluir_motivo = 'doméstica'.",
+                "R08", t, f, "nombre_comun", f"Especie doméstica ({u['especie'] or u['nombre']}): {efecto}.", sugerencia,
+            )
+
+
+def es_introducida(config: dict, especie, nombre, nombre_bd) -> bool:
+    cfg = config.get("introducidas") or {}
+    cientificos = {clave(x) for x in cfg.get("nombres_cientificos", [])}
+    comunes = {clave(x) for x in cfg.get("nombres_comunes", [])}
+    return clave(especie or "") in cientificos or clave(nombre or "") in comunes or clave(nombre_bd or "") in comunes
+
+
+@regla("R25", "Especie introducida (exótica)", INFO)
+def r25(ctx):
+    for t, f, u in ctx.iter_registros():
+        if es_introducida(ctx.config, u["especie"], u["nombre"], u["nombre_bd"]):
+            yield ctx.hallazgo(
+                "R25", t, f, "nombre_comun",
+                f"Especie introducida en Chile ({u['especie'] or u['nombre']}): la línea de base la reporta, "
+                "pero conviene analizarla aparte de la fauna nativa.",
+                "No se excluye: en base_limpia_larga.csv queda con origen = 'introducida' para filtrarla en R o PAST.",
             )
 
 
@@ -398,9 +422,10 @@ def r11(ctx):
 
 @regla("R12", "Hora incoherente con la metodología", ADV)
 def r12(ctx):
+    """Playback a pleno día y cámaras con hora 00:00. No se revisa a qué hora se revisan las
+    trampas: depende de cada campaña."""
     cfg = ctx.config["horarios"]
     noche = [hora_desde_texto(x) for x in cfg["nocturno"]]
-    sherman = [hora_desde_texto(x) for x in cfg["sherman_revision"]]
     nocturnas = {clave(m) for m in cfg["metodologias_nocturnas"]}
     for t, f, u in ctx.iter_registros():
         h, m = u["hora"], clave(u["metodologia"])
@@ -409,16 +434,9 @@ def r12(ctx):
         if m in nocturnas and not en_rango_horario(h, *noche):
             yield ctx.hallazgo(
                 "R12", t, f, "hora",
-                f"{u['metodologia']} (nocturno) registrado a las {h:%H:%M}, en horario diurno "
-                f"(se espera entre {noche[0]:%H:%M} y {noche[1]:%H:%M}).",
-                "Revisa la hora (¿AM/PM?) o la metodología.",
-            )
-        elif m == clave(cfg["metodologia_sherman"]) and not en_rango_horario(h, *sherman):
-            yield ctx.hallazgo(
-                "R12", t, f, "hora",
-                f"Captura en trampa Sherman a las {h:%H:%M}: las trampas se revisan entre "
-                f"{sherman[0]:%H:%M} y {sherman[1]:%H:%M}.",
-                "Revisa la hora o la metodología del registro.",
+                f"{u['metodologia']} registrado a las {h:%H:%M}, a pleno día: los playback se hacen de noche "
+                f"(entre {noche[0]:%H:%M} y {noche[1]:%H:%M}).",
+                "Revisa la hora (¿se confundió AM/PM?) o la metodología del registro.",
             )
         elif m == clave(cfg["metodologia_camara"]) and h == time(0, 0):
             yield ctx.hallazgo(

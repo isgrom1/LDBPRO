@@ -82,6 +82,7 @@ def test_base_limpia_larga(resultado):
     assert len(filas) == 198  # no se borran filas
     caballo = next(f for f in filas if f["nombre_cientifico"] == "Equus caballus")
     assert caballo["excluir_motivo"] == "doméstica" and caballo["usar_en_abundancia"] == "no"
+    assert caballo["origen"] == "doméstica"
     rhinella = next(f for f in filas if f["nombre_comun"] == "Rhinella spp.")
     assert "nombres BD" in rhinella["excluir_motivo"]
     gay = [f for f in filas if f["nombre_cientifico"] == "Phrygilus gayi"]

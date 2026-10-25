@@ -13,6 +13,8 @@ import json
 import mimetypes
 import os
 import shutil
+import socket
+import socketserver
 import subprocess
 import sys
 import tempfile
@@ -255,6 +257,9 @@ class Aplicacion:
         self.lock = threading.Lock()
         self.ultimo_ping = time.monotonic()
         self.cerrar = threading.Event()
+        # Modo ventana propia (pywebview) o navegador; lo fija el lanzador.
+        self.escritorio = False
+        self.al_mostrar = None  # función que trae la ventana al frente
 
     # -------------------------------------------------------------- sesiones
     def _sesion_previa(self, sha256: str) -> Path | None:
@@ -449,7 +454,7 @@ class Manejador(BaseHTTPRequestHandler):
                          ".svg": "image/svg+xml"}
                 return self._archivo(ruta, tipo=tipos.get(ruta.suffix))
             if partes == ["api", "info"]:
-                return self._json({"app": "Auditor XPE", "version": __version__,
+                return self._json({"app": "Auditor XPE", "version": __version__, "escritorio": self.app.escritorio,
                                    "carpeta": str(self.app.carpeta_base), "libreoffice": bool(soffice_disponible())})
             if partes == ["api", "recientes"]:
                 return self._json(self.app.recientes())
@@ -493,6 +498,12 @@ class Manejador(BaseHTTPRequestHandler):
             if metodo == "POST" and partes == ["api", "salir"]:
                 self.app.cerrar.set()
                 return self._json({"ok": True})
+            if metodo == "POST" and partes == ["api", "mostrar"]:  # otra copia del programa pide el frente
+                if self.app.al_mostrar:
+                    self.app.al_mostrar()
+                return self._json({"ok": True})
+            if metodo == "POST" and partes == ["api", "abrir-carpeta"]:
+                return self._json({"ok": abrir_en_explorador(self.app.carpeta_base)})
             if metodo == "POST" and partes == ["api", "auditar"]:
                 nombre = unquote(self.headers.get("X-Archivo") or "planilla.xlsx")
                 contenido = self._leer_cuerpo()
@@ -515,6 +526,12 @@ class Manejador(BaseHTTPRequestHandler):
                     return self._json(s.resumen())
                 if metodo == "POST" and accion == "abrir-carpeta":
                     return self._json({"ok": abrir_en_explorador(s.carpeta)})
+                if metodo == "POST" and accion == "abrir-archivo" and s.resultado:
+                    nombre = self._leer_json().get("nombre")
+                    ruta = next((r for r in s.resultado.archivos.values() if r.name == nombre), None)
+                    if ruta is None or not ruta.exists():
+                        return self._error("Ese archivo ya no existe", HTTPStatus.NOT_FOUND)
+                    return self._json({"ok": abrir_en_explorador(ruta)})
                 if metodo == "POST" and accion == "reiniciar":
                     with s.lock:
                         s.decisiones.clear()
@@ -555,8 +572,25 @@ class Manejador(BaseHTTPRequestHandler):
         return self._modificar("DELETE")
 
 
+class ServidorLocal(ThreadingHTTPServer):
+    """Servidor que no comparte su puerto.
+
+    HTTPServer activa SO_REUSEADDR y en Windows eso deja que dos copias del programa escuchen
+    en el mismo puerto: los pedidos llegan a cualquiera y, si una se cierra, la interfaz pierde
+    la conexión («Failed to fetch»). Aquí el puerto es exclusivo.
+    """
+
+    allow_reuse_address = False
+    daemon_threads = True
+
+    def server_bind(self):
+        if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):  # Windows
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        # Sin socket.getfqdn() de HTTPServer.server_bind: en algunos Windows demora segundos.
+        socketserver.TCPServer.server_bind(self)
+        self.server_name, self.server_port = self.server_address[:2]
+
+
 def crear_servidor(app: Aplicacion, puerto: int = 0) -> ThreadingHTTPServer:
     manejador = type("ManejadorApp", (Manejador,), {"app": app})
-    servidor = ThreadingHTTPServer(("127.0.0.1", puerto), manejador)
-    servidor.daemon_threads = True
-    return servidor
+    return ServidorLocal(("127.0.0.1", puerto), manejador)

@@ -26,14 +26,20 @@ POR_DEFECTO: dict = {
             "Caballo", "Caballo feral", "Perro", "Gato", "Gato doméstico", "Vaca",
             "Vaca feral", "Cabra", "Oveja", "Burro", "Gallina",
         ],
+        # True: salen con excluir_motivo en base_limpia_larga.csv; False: solo se marcan
+        "excluir_del_analisis": True,
+    },
+    # R25: especies introducidas (exóticas asilvestradas). Se marcan, no se excluyen.
+    "introducidas": {
+        "nombres_cientificos": ["Oryctolagus cuniculus", "Lepus europaeus", "Rattus rattus", "Rattus norvegicus", "Mus musculus", "Sus scrofa", "Neogale vison", "Neovison vison", "Castor canadensis", "Cervus elaphus", "Columba livia", "Passer domesticus"],
+        "nombres_comunes": ["Conejo", "Conejo europeo", "Liebre", "Liebre europea", "Rata negra", "Guarén", "Laucha doméstica", "Ratón doméstico", "Jabalí", "Visón", "Castor", "Ciervo rojo", "Paloma", "Paloma doméstica", "Gorrión"],
     },
     "aves": {"clase": "Aves", "horario_baja_actividad": ["12:00", "17:00"], "umbral_pct": 50},
     "horarios": {
-        "nocturno": ["19:00", "06:00"],
-        "metodologias_nocturnas": ["Playback anfibios"],
-        "sherman_revision": ["06:00", "12:00"],
-        # Nombres (como en la lista de validación) que usan R12 y R19
-        "metodologia_sherman": "Trampas Sherman",
+        # R12: los playback se hacen de noche; solo se marca uno hecho claramente de día
+        "nocturno": ["18:00", "07:00"],
+        "metodologias_nocturnas": ["Playback aves", "Playback anfibios"],
+        # Nombres (como en la lista de validación) que usan R10, R11 y R12
         "metodologia_camara": "Cámara trampa",
         "metodologia_transecto": "Transecto",
     },

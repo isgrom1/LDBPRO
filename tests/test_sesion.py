@@ -36,10 +36,17 @@ def test_la_demo_muestra_errores_de_todas_las_familias(analisis):
     reglas = {h.id_regla for h in analisis.antes}
     esperadas = {"E02", "E03", "E04", "E05", "E07", "E08", "E09", "E11", "E12", "E13", "R01", "R02", "R03",
                  "R04", "R05", "R06", "R08", "R09", "R10", "R12", "R13", "R14", "R15", "R16", "R17", "R18",
-                 "R19", "R20", "R21", "R22", "R23", "B01", "T01"}
+                 "R19", "R20", "R21", "R22", "R23", "R25", "B01", "T01"}
     assert esperadas <= reglas, esperadas - reglas
     assert not [h for h in analisis.antes if h.id_regla == "ERROR"]
     assert analisis.puntaje_despues.indice > analisis.puntaje_antes.indice
+
+
+def test_horarios_y_origen(analisis):
+    # R12 solo marca el playback hecho claramente de día (QV05: Playback anfibios a las 14:00)
+    assert [h.id_estacion for h in analisis.antes if h.id_regla == "R12"] == ["QV05"]
+    conejo = buscar(analisis, "R25")
+    assert conejo.valor_actual == "Conejo" and conejo.id_estacion == "QV01"
 
 
 def test_acciones_sugeridas(analisis):

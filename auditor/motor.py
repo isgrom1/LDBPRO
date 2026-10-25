@@ -74,6 +74,10 @@ def consolidar_cambios(libro: Libro, hallazgos: list[Hallazgo]) -> tuple[list[Ca
                 conflictos[llave].add((h.id_regla, repr(c.valor_nuevo)))
                 del cambios[llave]
             continue
+        if c.clave.startswith(Libro.PREFIJO_LISTA):  # celda de una lista de 'validación datos'
+            anterior = libro.valor_lista(c.hoja, c.celda)
+            cambios[llave] = Cambio(c.hoja, c.celda, c.fila, c.clave, anterior, c.valor_nuevo, [h.id_regla])
+            continue
         t = libro.tabla(c.hoja)
         if t.es_formula.at[c.fila, c.clave]:
             conflictos[llave] = {(h.id_regla, "la celda tiene fórmula")}
@@ -89,6 +93,9 @@ def consolidar_cambios(libro: Libro, hallazgos: list[Hallazgo]) -> tuple[list[Ca
 def aplicar_en_memoria(libro: Libro, cambios: list[Cambio]) -> Libro:
     nuevo = libro.copia()
     for c in cambios:
+        if c.clave.startswith(Libro.PREFIJO_LISTA):
+            nuevo.fijar_lista(c.hoja, c.celda, c.valor_nuevo)
+            continue
         t = nuevo.tabla(c.hoja)
         t.valores.at[c.fila, c.clave] = c.valor_nuevo
         t.es_formula.at[c.fila, c.clave] = False  # un valor escrito a mano reemplaza la fórmula

@@ -249,6 +249,27 @@ class Libro:
                 return t
         raise KeyError(hoja)
 
+    # Celdas de las listas de 'validación datos' (la plantilla también se puede corregir)
+    PREFIJO_LISTA = "lista:"
+
+    def ubicar_en_lista(self, hoja: str, celda: str) -> tuple[str, int] | None:
+        """(nombre de la lista, posición) del valor que está en esa celda, o None."""
+        for nombre, refs in self.listas_refs.items():
+            for i, ref in enumerate(refs):
+                if ref == (hoja, celda):
+                    return nombre, i
+        return None
+
+    def valor_lista(self, hoja: str, celda: str):
+        donde = self.ubicar_en_lista(hoja, celda)
+        return self.listas[donde[0]][donde[1]] if donde else None
+
+    def fijar_lista(self, hoja: str, celda: str, valor) -> None:
+        donde = self.ubicar_en_lista(hoja, celda)
+        if donde is None:
+            raise KeyError(f"{hoja}!{celda} no es parte de una lista de validación")
+        self.listas[donde[0]][donde[1]] = valor
+
     def copia(self) -> Libro:
         return copy.deepcopy(self)
 

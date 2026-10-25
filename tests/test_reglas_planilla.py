@@ -74,8 +74,9 @@ def test_registros(resultado):
 
 
 def test_plantilla(resultado):
-    t01 = {h.valor_actual for h in hallazgos(resultado, "T01")}
-    assert t01 == {"Huella", "Vocalización"}
+    # T01 corrige la celda de la lista desplegable ('validación datos'), no la del registro
+    t01 = {h.valor_actual: h.correccion.valor_nuevo for h in hallazgos(resultado, "T01")}
+    assert t01 == {"Huella": "Huellas", "Vocalizando": "Vocalización"}
     clases = {h.valor_actual for h in hallazgos(resultado, "B01") if h.celda.startswith("E")}
     assert clases == {"Mammalia", "Reptilia"}
 

@@ -6,9 +6,10 @@ en R/PAST), aplica solo las correcciones seguras y deja el resto para que lo dec
 
 ## Aplicación de escritorio (`AuditorXPE.exe`)
 
-Doble clic en **AuditorXPE.exe** y se abre la revisión en tu navegador (todo corre en tu PC,
-sin internet; también aparece una ventanita con los botones «Abrir en el navegador»,
-«Carpeta de resultados» y «Cerrar»).
+Doble clic en **AuditorXPE.exe** y se abre la ventana del programa (todo corre en tu PC, sin
+internet). La ventana usa WebView2, el motor que ya trae Windows 10/11; si faltara, el programa
+se abre en el navegador como respaldo. Solo se abre una copia: si haces doble clic otra vez, se
+trae al frente la que ya está abierta.
 
 1. **Subir**: arrastra la planilla (o prueba con la planilla de ejemplo).
 2. **Revisar**: puntaje y estado, y los problemas agrupados por estación o por tipo, con
@@ -20,7 +21,9 @@ sin internet; también aparece una ventanita con los botones «Abrir en el naveg
    - marcarlo **«Está bien así»**, con una nota (no resta puntaje).
    El puntaje se recalcula con cada decisión.
 3. **Descargar**: genera la planilla corregida con tus decisiones, muestra el puntaje final y
-   la verificación del archivo, y deja descargar cada archivo o todo en un .zip.
+   la verificación del archivo. Cada archivo tiene un botón **Abrir** (Excel, el bloc de
+   notas…) y **📂 Abrir carpeta** muestra todos los resultados en el Explorador; también se
+   puede guardar una copia o todo en un .zip.
 
 Las revisiones quedan en `Documentos\Auditor XPE\` (una carpeta por planilla, con
 `sesion.json`). Si vuelves a abrir el mismo archivo, se recuperan tus decisiones. Un
@@ -65,7 +68,7 @@ sobrescribe una auditoría anterior, que puede tener decisiones anotadas):
 | `<nombre>_CORREGIDA.xlsx` | El original con **solo** las auto-correcciones seguras, editado a nivel XML: conserva listas desplegables (`x14:dataValidation`), fórmulas y estilos; `fullCalcOnLoad="1"` para que Excel recalcule al abrir. |
 | `cambios_aplicados.csv` | hoja, celda, valor anterior, valor nuevo y regla de cada corrección. |
 | `reporte.md` | Puntaje antes/después, qué se corrigió solo, qué falta decidir agrupado por estación, verificación del archivo corregido y mapeo de columnas detectado. |
-| `base_limpia_larga.csv` | Tabla larga para R/PAST con las uniones rehechas en código. No borra filas: `excluir_motivo` (doméstica, estación inexistente, especie fuera de nombres BD), `usar_en_abundancia` (no para evidencia indirecta o abundancia no válida) y largo/ancho/área de transecto para densidades. |
+| `base_limpia_larga.csv` | Tabla larga para R/PAST con las uniones rehechas en código. No borra filas: `origen` (doméstica / introducida / vacío si es nativa o no está en las listas), `excluir_motivo` (doméstica —configurable—, estación inexistente, especie fuera de nombres BD), `usar_en_abundancia` (no para evidencia indirecta o abundancia no válida) y largo/ancho/área de transecto para densidades. |
 | `hallazgos.csv` | Los mismos hallazgos de la hoja HALLAZGOS, en CSV. |
 
 Con `--solo-reporte` no se escriben `_CORREGIDA.xlsx` ni `cambios_aplicados.csv`; el reporte
@@ -118,7 +121,7 @@ muestra el puntaje *proyectado* tras las auto-correcciones.
 | R09 | Fecha vacía o fuera del rango de la campaña | 🟠 | No |
 | R10 | Hora vacía | 🟠 | No |
 | R11 | Aves en transecto fuera del horario de mayor actividad | 🟡 | No |
-| R12 | Hora incoherente con la metodología | 🟠 | No |
+| R12 | Playback (aves o anfibios) hecho claramente de día, o cámara trampa a las 00:00 exactas | 🟠 | No |
 | R13 | Metodología o tipo de registro fuera de la lista de validación | 🟠 | No |
 | R14 | Directo/Indirecto incoherente con el tipo de registro | 🟠 | No |
 | R15 | Registro duplicado | 🟠 | No |
@@ -131,16 +134,23 @@ muestra el puntaje *proyectado* tras las auto-correcciones.
 | R22 | Número guardado como texto (captura o abundancia) | 🟠 | Sí |
 | R23 | Observación menciona otra metodología | 🟡 | No |
 | R24 | Fila con datos pero sin ID Estación | 🟠 | No |
+| R25 | Especie introducida (conejo, liebre, rata, jabalí, visón…): se informa, no se excluye | 🟡 | No |
 | B01 | Diccionario nombres BD con entradas problemáticas | 🟡 | No |
-| T01 | Plantilla: una fórmula y su lista de validación no coinciden | 🟡 | No |
+| T01 | Plantilla: una fórmula y su lista de validación no coinciden (p. ej. «Huella» vs «Huellas») | 🟡 | Sí³ |
 | X01 | Columna de fórmula con un valor fijo | 🟠 | No |
 | X02 | Valor cacheado de una fórmula desactualizado | 🟡 | No |
 
 ¹ Solo si está vacío o difiere en mayúsculas/espacios: un código distinto puede ser un renombre
 deliberado para el informe. ² Solo si hay un valor mayoritario y la variante es un prefijo o un
-typo claro (p. ej. «Punta del So» → «Punta del Sol»).
+typo claro (p. ej. «Punta del So» → «Punta del Sol»). ³ Corrige la celda de la lista en
+`validación datos` para que coincida con la fórmula (no toca los registros).
 
-E14, E15, R21–R24, B01, T01, X01 y X02 son adicionales a la lista original.
+R08 marca perros, gatos, caballos, vacas, cabras, ovejas y gallinas; con
+`domesticas.excluir_del_analisis: true` (por defecto) quedan con `excluir_motivo = doméstica`
+en la base larga. Las introducidas (R25) se marcan en `origen` pero siguen en el análisis,
+porque la línea de base las reporta. Las dos listas se editan en `config.yaml`.
+
+E14, E15, R21–R25, B01, T01, X01 y X02 son adicionales a la lista original.
 
 ### Agregar una regla
 
@@ -151,11 +161,11 @@ ya hechas) y devuelve hallazgos. Créala en `auditor/reglas/` (en un módulo nue
 ```python
 from ..hallazgos import Severidad, regla
 
-@regla("R25", "Sexo fuera de la lista", Severidad.INFO)
-def r25(ctx):
+@regla("R26", "Sexo fuera de la lista", Severidad.INFO)
+def r26(ctx):
     for t, fila, u in ctx.iter_registros():       # u = unión rehecha (especie, clase, fecha, hora…)
         if t.valor(fila, "sexo") not in ("Macho", "Hembra", "Indeterminado"):
-            yield ctx.hallazgo("R25", t, fila, "sexo", "Problema en español", "Sugerencia")
+            yield ctx.hallazgo("R26", t, fila, "sexo", "Problema en español", "Sugerencia")
 ```
 
 Para que sea auto-corregible, regístrala con `auto_corregible=True` y pasa
@@ -175,7 +185,8 @@ El «después» se calcula volviendo a leer y auditar el archivo `_CORREGIDA.xls
 ## Configuración
 
 `config.yaml` trae los umbrales de largo de transecto, ancho de transecto por clase,
-domésticas, distancia máxima de captura y horario de actividad de aves. El resto de los
+especies domésticas e introducidas, distancia máxima de captura, horario de actividad de aves
+y el horario nocturno de los playback. El resto de los
 parámetros (y sus valores por defecto) está en `auditor/config.py`; cualquiera se puede
 sobrescribir desde el YAML.
 
@@ -193,7 +204,8 @@ la variable `PLANILLA_XPE`; sin ella, las pruebas que la necesitan se saltan.
 
 Las pruebas de la aplicación y de las decisiones usan `auditor/demo.py`, una planilla de
 ejemplo con datos ficticios (corren también en GitHub Actions, que además compila el .exe y
-le hace una autoprueba: `AuditorXPE.exe --autoprueba`).
+le hace una autoprueba: `AuditorXPE.exe --autoprueba` para el servidor y
+`--autoprueba-ventana` para la ventana WebView2).
 
 `tests/escenario.py` crea una copia de la planilla con los errores de la revisión manual que no
 están en esa versión del archivo (PMF20, PMF29/PMF32, PMF35, Cururo «P», ID Final vacío,

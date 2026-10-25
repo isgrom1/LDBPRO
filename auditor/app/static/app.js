@@ -44,7 +44,12 @@ async function api(metodo, ruta, cuerpo) {
     opciones.body = JSON.stringify(cuerpo);
     opciones.headers["Content-Type"] = "application/json";
   }
-  const r = await fetch(ruta, opciones);
+  let r;
+  try {
+    r = await fetch(ruta, opciones);
+  } catch (e) {
+    throw new Error("Se perdió la conexión con el Auditor XPE. Si cerraste el programa, vuelve a abrirlo; tus decisiones quedaron guardadas.");
+  }
   const datos = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(datos.error || `Error ${r.status}`);
   return datos;
@@ -83,7 +88,10 @@ async function iniciar() {
   mostrarVista("inicio");
   try {
     const info = await api("GET", "/api/info");
-    $("#pie-info").textContent = `Versión ${info.version} · Los resultados se guardan en ${info.carpeta}`;
+    $("#pie-info").innerHTML = `Versión ${esc(info.version)} · Los resultados se guardan en ${esc(info.carpeta)}
+      · <button class="enlace" id="btn-carpeta-base">abrir carpeta</button>`;
+    $("#btn-carpeta-base").addEventListener("click", () => api("POST", "/api/abrir-carpeta").catch((e) => aviso(e.message, true)));
+    document.body.classList.toggle("escritorio", !!info.escritorio);
   } catch (e) {
     /* sin información no pasa nada */
   }
@@ -678,10 +686,21 @@ function renderFinal(r) {
     .map(
       (f) => `<div class="archivo"><span class="archivo-icono">${iconos[f.clave] || "📄"}</span>
         <div><b>${esc(f.nombre)}</b><small>${esc(f.descripcion)} · ${fmt(f.bytes / 1024)} KB</small></div>
-        <a class="btn-sec" href="${base}/archivos/${encodeURIComponent(f.nombre)}" download>⬇ Descargar</a></div>`
+        <button class="btn" data-abrir="${esc(f.nombre)}">Abrir</button>
+        <a class="btn-sec" href="${base}/archivos/${encodeURIComponent(f.nombre)}" download title="Guardar una copia en Descargas">⬇ Copia</a></div>`
     )
     .join("");
   $("#btn-zip").href = `${base}/zip`;
+  $$("#f-archivos [data-abrir]").forEach((b) =>
+    b.addEventListener("click", async () => {
+      try {
+        const r = await api("POST", `${base}/abrir-archivo`, { nombre: b.dataset.abrir });
+        if (!r.ok) aviso("No se pudo abrir el archivo. Está en la carpeta de resultados.", true);
+      } catch (e) {
+        aviso(e.message, true);
+      }
+    })
+  );
   $("#f-carpeta").textContent = `Guardados también en: ${r.carpeta}`;
 }
 

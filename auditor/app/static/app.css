@@ -306,6 +306,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .archivo div { flex: 1; min-width: 0; }
 .archivo b { display: block; word-break: break-all; }
 .archivo small { color: var(--tenue); }
+.archivo .btn, .archivo .btn-sec { padding: 7px 14px; }
 
 /* ---------- modal y avisos ---------- */
 .modal { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; background: rgba(10, 20, 15, .45); }
