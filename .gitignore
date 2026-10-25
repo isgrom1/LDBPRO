@@ -1,0 +1,17 @@
+# Planillas de campaña: contienen coordenadas de especies, datos del proyecto
+# y nombres de personas. El repositorio es público: no se suben.
+tests/datos/*.xlsx
+tests/datos/*.xlsb
+tests/datos/*.xls
+*.xlsx
+*.xlsb
+*.xls
+!tests/datos/.gitkeep
+
+# Salidas de la herramienta
+auditoria_*/
+salidas/
+
+__pycache__/
+*.pyc
+.pytest_cache/

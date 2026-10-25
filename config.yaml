@@ -1,0 +1,64 @@
+# Configuración del auditor de planillas de fauna XPE.
+# Todo lo que no esté aquí toma el valor por defecto de auditor/config.py.
+
+transecto:
+  largo_min_m: 150
+  largo_max_m: 250
+  # E10: distancia máxima entre el punto de la estación y el punto medio del transecto
+  distancia_max_estacion_a_punto_medio_m: 150
+
+# Ancho de banda del transecto por clase (m). Se usa para calcular el área
+# muestreada en base_limpia_larga.csv (área = largo × ancho) y así obtener densidades.
+ancho_transecto_m:
+  Aves: 50
+  Mamíferos: 20
+  Reptiles: 4
+  Anfibios: 4
+
+coordenadas:
+  # E07: coordenada a más de esta distancia de la mediana de las estaciones
+  distancia_max_a_mediana_km: 5
+
+captura:
+  # R16: coordenada de captura a más de esta distancia de su estación
+  distancia_max_m: 300
+
+# R08: especies domésticas (se marcan y se excluyen de base_limpia_larga.csv)
+domesticas:
+  nombres_cientificos:
+    - Equus caballus
+    - Equus asinus
+    - Canis familiaris
+    - Canis lupus familiaris
+    - Felis catus
+    - Felis silvestris catus
+    - Bos taurus
+    - Capra hircus
+    - Ovis aries
+    - Gallus gallus
+    - Gallus gallus domesticus
+  nombres_comunes:
+    - Caballo
+    - Caballo feral
+    - Perro
+    - Gato
+    - Gato doméstico
+    - Vaca
+    - Vaca feral
+    - Cabra
+    - Oveja
+    - Burro
+    - Gallina
+
+aves:
+  clase: Aves
+  # R11: horario de baja actividad de aves (registros en transecto)
+  horario_baja_actividad: ["12:00", "17:00"]
+  # R11 se reporta como hallazgo si el % en ese horario supera este umbral
+  umbral_pct: 50
+
+horarios:
+  # R12
+  nocturno: ["19:00", "06:00"]
+  metodologias_nocturnas: [Playback anfibios]
+  sherman_revision: ["06:00", "12:00"]
