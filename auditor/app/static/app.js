@@ -6,9 +6,9 @@ const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "
 const normalizar = (s) => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 const fmt = (n) => Number(n).toLocaleString("es-CL", { maximumFractionDigits: 1 });
 const NIVEL = {
-  3: { emoji: "🔴", nombre: "Críticos" },
-  2: { emoji: "🟠", nombre: "Advertencias" },
-  1: { emoji: "🟡", nombre: "Info" },
+  3: { nombre: "Críticos" },
+  2: { nombre: "Advertencias" },
+  1: { nombre: "Info" },
 };
 const PESTANAS = [
   ["pendientes", "Para revisar"],
@@ -17,6 +17,8 @@ const PESTANAS = [
   ["todos", "Todos"],
 ];
 const LIMITE_GRUPO = 40;
+// Punto de color por severidad (en vez de emojis): rojo crítico, naranjo advertencia, amarillo info
+const punto = (n) => `<i class="punto n${n}" aria-label="${NIVEL[n].nombre}"></i>`;
 
 const E = {
   sesion: null,
@@ -87,8 +89,8 @@ function claseEstado(estado) {
 async function cargarInfo() {
   try {
     const info = await api("GET", "/api/info");
-    $("#pie-info").innerHTML = `Versión ${esc(info.version)} · Los resultados se guardan en ${esc(info.carpeta)}
-      · <button class="enlace" id="btn-carpeta-base">abrir carpeta</button>`;
+    $("#pie-info").innerHTML = `Los resultados se guardan en <code>${esc(info.carpeta)}</code>
+      <button class="enlace" id="btn-carpeta-base">Abrir carpeta</button> <span class="version">· v${esc(info.version)}</span>`;
     $("#btn-carpeta-base").addEventListener("click", () => api("POST", "/api/abrir-carpeta").catch((e) => aviso(e.message, true)));
     document.body.classList.toggle("escritorio", !!info.escritorio);
   } catch (e) {
@@ -201,6 +203,7 @@ async function cargarRecientes() {
 }
 
 function volverAlInicio(error) {
+  $("#progreso-global").hidden = true;
   $("#archivo").value = "";
   const caja = $("#error-inicio");
   caja.hidden = !(typeof error === "string" && error);
@@ -209,10 +212,86 @@ function volverAlInicio(error) {
   mostrarVista("inicio");
 }
 
+// ------------------------------------------------------------------ monitor de progreso
+// Avance que representa cada paso que informa el servidor; entre pasos la barra sigue avanzando suave.
+const ETAPAS = [
+  ["Subiendo", 0.08], ["Formato real", 0.16], ["Convirtiendo", 0.26], ["Leyendo", 0.36],
+  ["Revisando las reglas", 0.6], ["Calculando el puntaje", 0.84],
+  ["Escribiendo la planilla corregida", 0.22], ["Verificando", 0.5], ["Escribiendo el archivo de revisión", 0.82],
+  ["Listo", 1],
+];
+const BARRAS_PROGRESO = ["#progreso-global div", "#progreso-barra", "#modal-barra"];
+const M = { inicio: 0, tiempos: [], avance: 0 };
+
+const reloj = (ms) => {
+  const s = Math.max(0, ms) / 1000;
+  return `${String(Math.floor(s / 60)).padStart(2, "0")}:${(s % 60).toFixed(1).padStart(4, "0")}`;
+};
+
+function fijarAvance(fraccion) {
+  M.avance = Math.max(M.avance, Math.min(1, fraccion));
+  BARRAS_PROGRESO.forEach((s) => {
+    const el = $(s);
+    if (el) el.style.width = `${(M.avance * 100).toFixed(1)}%`;
+  });
+  BARRAS_PROGRESO.forEach((s) => $(s)?.parentElement.classList.toggle("completo", M.avance >= 1));
+}
+
+function iniciarMonitor(consola) {
+  M.inicio = performance.now();
+  M.tiempos = [];
+  M.avance = 0;
+  consola.innerHTML = "";
+  BARRAS_PROGRESO.forEach((s) => {
+    const el = $(s);
+    if (el) {
+      el.style.transition = "none";
+      el.style.width = "0";
+      el.offsetWidth; // aplica el 0 sin animar antes de volver a avanzar
+      el.style.transition = "";
+    }
+  });
+  $("#progreso-global").hidden = false;
+  fijarAvance(0.04);
+}
+
+function terminarMonitor() {
+  fijarAvance(1);
+  setTimeout(() => ($("#progreso-global").hidden = true), 700);
+}
+
+function avanzarSegun(pasos) {
+  const ultimo = pasos[pasos.length - 1] || "";
+  const etapa = ETAPAS.find(([t]) => ultimo.startsWith(t));
+  const base = etapa ? etapa[1] : M.avance;
+  fijarAvance(Math.max(base, Math.min(M.avance + 0.012, base + 0.12, 0.96)));
+}
+
+// Consola: agrega solo las líneas nuevas (sin repetir animaciones) y marca la que está en curso
+function renderConsola(el, pasos, terminado = false) {
+  pasos.forEach((p, i) => {
+    if (M.tiempos[i] == null) M.tiempos[i] = performance.now() - M.inicio;
+    if (i >= el.children.length) {
+      const li = document.createElement("li");
+      li.innerHTML = `<span class="t">${reloj(M.tiempos[i])}</span><span class="msg">${esc(p)}</span><span class="estado-linea"></span>`;
+      el.append(li);
+    }
+  });
+  [...el.children].forEach((li, i) => {
+    const enCurso = i === pasos.length - 1 && !terminado && pasos[i] !== "Listo";
+    const estado = li.querySelector(".estado-linea");
+    estado.className = `estado-linea ${enCurso ? "corriendo" : "ok"}`;
+    estado.textContent = enCurso ? "EN CURSO" : "OK";
+    li.querySelector(".msg").classList.toggle("con-cursor", enCurso);
+  });
+  el.scrollTop = el.scrollHeight;
+}
+
 function mostrarProgreso(nombre) {
   $("#progreso-titulo").textContent = "Revisando la planilla…";
   $("#progreso-archivo").textContent = nombre;
-  $("#progreso-pasos").innerHTML = "<li>Subiendo el archivo</li>";
+  iniciarMonitor($("#progreso-pasos"));
+  renderConsola($("#progreso-pasos"), ["Subiendo el archivo"]);
   mostrarVista("progreso");
 }
 
@@ -244,11 +323,15 @@ async function seguir(id) {
   E.sesion = id;
   for (;;) {
     const r = await api("GET", `/api/sesiones/${id}`);
-    $("#progreso-pasos").innerHTML = r.pasos.map((p) => `<li>${esc(p)}</li>`).join("");
+    const pasos = ["Subiendo el archivo", ...r.pasos];
+    renderConsola($("#progreso-pasos"), pasos, r.estado !== "analizando");
+    avanzarSegun(pasos);
     if (r.estado === "error") throw new Error(r.error || "No se pudo revisar la planilla");
     if (r.estado !== "analizando") break;
     await espera(500);
   }
+  terminarMonitor();
+  await espera(350);
   await cargarDatos();
 }
 
@@ -396,21 +479,21 @@ function renderIndicadores() {
   const d = E.datos;
   const filas = [];
   if (d.aves) {
-    filas.push(`<div class="indicador"><span>🐦</span><div><b>${fmt(d.aves.pct)}%</b> de los registros de aves en transecto
+    filas.push(`<div class="indicador"><span class="tag">AVES</span><div><b>${fmt(d.aves.pct)}%</b> de los registros de aves en transecto
       fue entre ${esc(d.aves.rango)} (${d.aves.n_en_rango} de ${d.aves.n}).</div></div>`);
   }
   const presencias = Object.entries(d.presencias || {});
   if (presencias.length) {
     const lista = presencias.map(([e, ests]) => `${esc(e)} (${esc(ests.join(", "))})`).join("; ");
-    filas.push(`<div class="indicador"><span>👂</span><div>Registros de presencia «P»: <b>${lista}</b>.
+    filas.push(`<div class="indicador"><span class="tag">P</span><div>Registros de presencia «P»: <b>${lista}</b>.
       Cuentan para la riqueza, no para abundancia ni densidad.</div></div>`);
   }
   if (d.sin_registros.length) {
-    filas.push(`<div class="indicador"><span>📍</span><div>Estaciones sin registros: <b>${esc(d.sin_registros.join(", "))}</b>.
+    filas.push(`<div class="indicador"><span class="tag">0 REG</span><div>Estaciones sin registros: <b>${esc(d.sin_registros.join(", "))}</b>.
       No se borran: cuentan como 0.</div></div>`);
   }
-  d.hojas_sin_datos.forEach((h) => filas.push(`<div class="indicador"><span>📄</span><div>«${esc(h)}» no tiene datos: no se revisó.</div></div>`));
-  filas.push(`<div class="indicador"><span>🛠️</span><div><b>${d.n_cambios_auto}</b> celdas se pueden corregir solas
+  d.hojas_sin_datos.forEach((h) => filas.push(`<div class="indicador"><span class="tag">HOJA</span><div>«${esc(h)}» no tiene datos: no se revisó.</div></div>`));
+  filas.push(`<div class="indicador"><span class="tag">AUTO</span><div><b>${d.n_cambios_auto}</b> celdas se pueden corregir solas
     (espacios invisibles, mayúsculas, «Si» → 1…).</div></div>`);
   $("#r-indicadores").innerHTML = filas.join("");
 }
@@ -419,13 +502,14 @@ function anillo(valor, estado) {
   const r = 62;
   const c = 2 * Math.PI * r;
   const pct = Math.max(0, Math.min(100, valor)) / 100;
-  const color = { "e-verde": "var(--primario)", "e-naranjo": "var(--naranjo)", "e-rojo": "var(--rojo)" }[claseEstado(estado)];
-  return `<svg width="150" height="150" viewBox="0 0 150 150" aria-hidden="true">
-      <circle cx="75" cy="75" r="${r}" fill="none" stroke="var(--sup-2)" stroke-width="11"/>
-      <circle cx="75" cy="75" r="${r}" fill="none" stroke="${color}" stroke-width="11" stroke-linecap="round"
-        stroke-dasharray="${(c * pct).toFixed(1)} ${c.toFixed(1)}" style="transition: stroke-dasharray .5s"/>
+  const color = { "e-verde": "var(--verde)", "e-naranjo": "var(--naranjo)", "e-rojo": "var(--rojo)" }[claseEstado(estado)];
+  return `<svg width="156" height="156" viewBox="0 0 150 150" aria-hidden="true">
+      <circle cx="75" cy="75" r="${r}" fill="none" stroke="var(--sup-3)" stroke-width="7"/>
+      <circle cx="75" cy="75" r="${r}" fill="none" stroke="${color}" stroke-width="7" stroke-linecap="round"
+        stroke-dasharray="${(c * pct).toFixed(1)} ${c.toFixed(1)}"
+        style="transition: stroke-dasharray .8s cubic-bezier(.25,.8,.25,1); filter: drop-shadow(0 0 6px ${color})"/>
     </svg>
-    <div class="numero"><b>${fmt(valor)}</b><small>de 100</small></div>`;
+    <div class="numero"><b>${fmt(valor)}</b><small>DE 100</small></div>`;
 }
 
 function renderPuntaje(cargando = false) {
@@ -455,7 +539,7 @@ function renderBarraAccion() {
   const manuales = Object.values(E.decisiones).filter((d) => d.tipo !== "sin_auto").length;
   const auto = hs.filter((h) => h.auto !== null && !E.decisiones[h.id]).length;
   const pend = E.proyeccion.pendientes;
-  const resto = pend ? ` · quedan ${pend[3]} 🔴 y ${pend[2]} 🟠` : "";
+  const resto = pend ? ` · quedan <b>${pend[3]}</b> ${punto(3)} y <b>${pend[2]}</b> ${punto(2)}` : "";
   $("#r-barra-texto").innerHTML = `<b>${manuales}</b> decisiones tuyas · <b>${auto}</b> correcciones automáticas${resto}`;
 }
 
@@ -475,7 +559,7 @@ function renderHerramientas() {
   $("#r-niveles").innerHTML = [3, 2, 1]
     .map((n) => {
       const c = enPestana.filter((h) => h.nivel === n).length;
-      return `<button class="chip ${E.niveles.has(n) ? "" : "apagado"}" data-nivel="${n}" title="Mostrar u ocultar ${NIVEL[n].nombre.toLowerCase()}">${NIVEL[n].emoji} ${c}</button>`;
+      return `<button class="chip ${E.niveles.has(n) ? "" : "apagado"}" data-nivel="${n}" title="Mostrar u ocultar ${NIVEL[n].nombre.toLowerCase()}">${punto(n)} ${c}</button>`;
     })
     .join("");
 }
@@ -513,10 +597,10 @@ function renderLista() {
   const cont = $("#r-lista");
   if (!lista.length) {
     const mensajes = {
-      pendientes: ["🎉", "No queda nada por revisar con estos filtros."],
-      auto: ["🛠️", "No hay correcciones automáticas con estos filtros."],
-      decididos: ["📝", "Todavía no tomas decisiones. Ve a «Para revisar»."],
-      todos: ["🔍", "No hay hallazgos que coincidan."],
+      pendientes: ["✓", "No queda nada por revisar con estos filtros."],
+      auto: ["0", "No hay correcciones automáticas con estos filtros."],
+      decididos: ["0", "Todavía no tomas decisiones. Ve a «Para revisar»."],
+      todos: ["∅", "No hay hallazgos que coincidan."],
     };
     const [icono, texto] = mensajes[E.vista];
     cont.innerHTML = `<div class="vacio"><span>${icono}</span>${texto}</div>`;
@@ -528,7 +612,7 @@ function renderLista() {
       const contadores = [3, 2, 1]
         .map((n) => {
           const c = g.items.filter((h) => h.nivel === n).length;
-          return c ? `<span class="c${n}">${NIVEL[n].emoji} ${c}</span>` : "";
+          return c ? `<span class="c${n}">${punto(n)} ${c}</span>` : "";
         })
         .join("");
       const mas = g.items.length > limite
@@ -743,15 +827,18 @@ async function generar() {
   const boton = $("#btn-generar");
   boton.disabled = true;
   $("#modal-titulo").textContent = "Generando la planilla corregida…";
-  $("#modal-pasos").innerHTML = "";
+  iniciarMonitor($("#modal-pasos"));
   $("#modal").hidden = false;
   try {
     await api("POST", `/api/sesiones/${E.sesion}/generar`);
     for (;;) {
       await espera(600);
       const r = await api("GET", `/api/sesiones/${E.sesion}`);
-      $("#modal-pasos").innerHTML = r.pasos.map((p) => `<li>${esc(p)}</li>`).join("");
+      renderConsola($("#modal-pasos"), r.pasos, r.estado === "generado");
+      avanzarSegun(r.pasos);
       if (r.estado === "generado") {
+        terminarMonitor();
+        await espera(400);
         E.resultado = r.resultado;
         renderFinal(r);
         mostrarVista("final");
@@ -761,6 +848,7 @@ async function generar() {
     }
   } catch (e) {
     aviso(e.message, true);
+    $("#progreso-global").hidden = true;
   } finally {
     $("#modal").hidden = true;
     boton.disabled = false;
@@ -774,31 +862,34 @@ function renderFinal(r) {
   $("#f-subtitulo").textContent = `${E.datos.archivo} · ${res.n_cambios} celdas corregidas (${res.n_manuales} por tus decisiones)` +
     (res.aceptados ? ` · ${res.aceptados} hallazgos marcados «está bien así»` : "");
   $("#f-puntaje").innerHTML = `
-    <div><small>Antes</small><span class="valor">${fmt(a.indice)}</span><br><span class="estado ${claseEstado(a.estado)}">${esc(a.estado)}</span></div>
+    <div><small>Antes</small><span class="valor">${fmt(a.indice)}</span><span class="estado ${claseEstado(a.estado)}">${esc(a.estado)}</span></div>
     <div class="flecha">→</div>
-    <div><small>Después</small><span class="valor">${fmt(d.indice)}</span><br><span class="estado ${claseEstado(d.estado)}">${esc(d.estado)}</span></div>`;
+    <div><small>Después</small><span class="valor">${fmt(d.indice)}</span><span class="estado ${claseEstado(d.estado)}">${esc(d.estado)}</span></div>`;
   const p = res.pendientes;
   $("#f-pendientes").innerHTML = p[3] + p[2]
-    ? `<p>Todavía quedan <b>${p[3]} 🔴</b> y <b>${p[2]} 🟠</b> (y ${p[1]} 🟡). Puedes volver a la revisión, decidir y generar de nuevo.</p>`
-    : `<p>🎉 No quedan problemas 🔴 ni 🟠.</p>`;
+    ? `<p class="tenue">Todavía quedan <b>${p[3]}</b> ${punto(3)} críticos y <b>${p[2]}</b> ${punto(2)} advertencias (y ${p[1]} ${punto(1)} avisos).
+        Puedes volver a la revisión, decidir y generar de nuevo.</p>`
+    : `<p class="tenue">No quedan problemas críticos ni advertencias.</p>`;
   const v = res.verificacion;
-  const ok = (x) => (x ? "✅" : "❌");
+  const linea = (ok, texto) =>
+    `<li><span class="estado-linea ${ok ? "ok" : "err"}">${ok ? "✓ OK " : "✗ ERR"}</span><span class="msg">${texto}</span></li>`;
   $("#f-verificacion").innerHTML = v
-    ? `<li>${ok(v.listas[2])} Listas desplegables conservadas: ${v.listas[1]} de ${v.listas[0]}</li>
-       <li>${ok(v.formulas[2])} Fórmulas: ${v.formulas[1]} (original ${v.formulas[0]})</li>
-       <li>${ok(v.celdas[2])} Solo cambiaron las ${v.celdas[0]} celdas corregidas</li>
-       <li>${ok(v.estilos)} Formato y colores intactos</li>
-       <li>${ok(v.reauditoria)} La planilla corregida se volvió a revisar y coincide</li>
-       ${v.libreoffice === null ? "" : `<li>${ok(v.libreoffice)} Fórmulas recalculadas sin errores nuevos (LibreOffice)</li>`}`
-    : "<li>No se generó planilla corregida.</li>";
-  const iconos = { corregida: "✅", revision: "🖍️", reporte: "📝", base: "📊", cambios: "🧾", hallazgos: "📋" };
+    ? [
+        linea(v.listas[2], `Listas desplegables conservadas: ${v.listas[1]} de ${v.listas[0]}`),
+        linea(v.formulas[2], `Fórmulas: ${v.formulas[1]} (original ${v.formulas[0]})`),
+        linea(v.celdas[2], `Solo cambiaron las ${v.celdas[0]} celdas corregidas`),
+        linea(v.estilos, "Formato y colores intactos"),
+        linea(v.reauditoria, "La planilla corregida se volvió a revisar y coincide"),
+        v.libreoffice === null ? "" : linea(v.libreoffice, "Fórmulas recalculadas sin errores nuevos (LibreOffice)"),
+      ].join("")
+    : `<li><span class="msg">No se generó planilla corregida.</span></li>`;
   const base = `/api/sesiones/${E.sesion}`;
   $("#f-archivos").innerHTML = res.archivos
     .map(
-      (f) => `<div class="archivo"><span class="archivo-icono">${iconos[f.clave] || "📄"}</span>
+      (f) => `<div class="archivo"><span class="archivo-icono">${esc(f.nombre.split(".").pop().toUpperCase())}</span>
         <div><b>${esc(f.nombre)}</b><small>${esc(f.descripcion)} · ${fmt(f.bytes / 1024)} KB</small></div>
-        <button class="btn" data-abrir="${esc(f.nombre)}">Abrir</button>
-        <a class="btn-sec" href="${base}/archivos/${encodeURIComponent(f.nombre)}" download title="Guardar una copia en Descargas">⬇ Copia</a></div>`
+        <button class="btn-sec" data-abrir="${esc(f.nombre)}">Abrir</button>
+        <a class="btn-fantasma" href="${base}/archivos/${encodeURIComponent(f.nombre)}" download title="Guardar una copia en Descargas">Copia</a></div>`
     )
     .join("");
   $("#btn-zip").href = `${base}/zip`;

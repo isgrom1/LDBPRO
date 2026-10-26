@@ -468,7 +468,7 @@ class Manejador(BaseHTTPRequestHandler):
                 if ruta.parent != ESTATICOS.resolve() or not ruta.is_file():
                     return self._error("No existe", HTTPStatus.NOT_FOUND)
                 tipos = {".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
-                         ".svg": "image/svg+xml"}
+                         ".svg": "image/svg+xml", ".woff2": "font/woff2", ".txt": "text/plain; charset=utf-8"}
                 return self._archivo(ruta, tipo=tipos.get(ruta.suffix))
             if partes == ["api", "info"]:
                 return self._json({"app": "Auditor XPE", "version": __version__, "escritorio": self.app.escritorio,

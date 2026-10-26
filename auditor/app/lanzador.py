@@ -90,6 +90,28 @@ def _mensaje(texto: str) -> None:
 # --------------------------------------------------------------------------- ventanas
 
 
+# Color de fondo de la interfaz (#0F1219): la ventana arranca con él, sin destello blanco
+FONDO = "#0F1219"
+
+
+def _barra_titulo_oscura(ventana) -> None:
+    """Windows 11: barra de título oscura y del mismo color que la app. Si no se puede, se deja."""
+    try:
+        import ctypes
+
+        hwnd = ctypes.c_void_p(int(ventana.native.Handle.ToInt64()))
+        dwm = ctypes.windll.dwmapi
+        for atributo, valor in (
+            (20, 1),  # DWMWA_USE_IMMERSIVE_DARK_MODE
+            (35, 0x0019120F),  # DWMWA_CAPTION_COLOR, COLORREF 0x00BBGGRR de #0F1219
+            (36, 0x00FFFFFF),  # DWMWA_TEXT_COLOR
+        ):
+            v = ctypes.c_int(valor)
+            dwm.DwmSetWindowAttribute(hwnd, atributo, ctypes.byref(v), ctypes.sizeof(v))
+    except Exception:
+        pass
+
+
 def _ventana_propia(app: Aplicacion, url: str) -> bool:
     """Muestra la interfaz en una ventana nativa. False si pywebview o WebView2 no están."""
     try:
@@ -99,11 +121,14 @@ def _ventana_propia(app: Aplicacion, url: str) -> bool:
     try:
         webview.settings["ALLOW_DOWNLOADS"] = True
         ventana = webview.create_window(
-            "Auditor XPE", url, width=1360, height=880, min_size=(980, 640), text_select=True
+            "Auditor XPE", url, width=1360, height=880, min_size=(980, 640), text_select=True,
+            background_color=FONDO,
         )
     except Exception:
         traceback.print_exc()
         return False
+    if sys.platform.startswith("win"):
+        ventana.events.shown += lambda: _barra_titulo_oscura(ventana)
 
     def al_mostrar():
         try:
@@ -282,7 +307,10 @@ def autoprueba_ventana(registro: Path) -> int:
             {"log_message": lambda self, formato, *args: peticiones.append(formato % args)},
         )
         threading.Thread(target=servidor.serve_forever, daemon=True).start()
-        ventana = webview.create_window("Auditor XPE (autoprueba)", f"http://127.0.0.1:{servidor.server_address[1]}/")
+        ventana = webview.create_window("Auditor XPE (autoprueba)", f"http://127.0.0.1:{servidor.server_address[1]}/",
+                                        background_color=FONDO)
+        if sys.platform.startswith("win"):
+            ventana.events.shown += lambda: _barra_titulo_oscura(ventana)
 
         def esperar(expresion, segundos):
             limite = time.monotonic() + segundos
