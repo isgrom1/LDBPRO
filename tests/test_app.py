@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import csv
 import http.client
 import io
 import json
@@ -11,6 +10,7 @@ import time
 import zipfile
 
 import pytest
+from conftest import leer_csv
 
 from auditor.app.lanzador import autoprueba
 from auditor.app.servidor import Aplicacion, crear_servidor
@@ -143,7 +143,7 @@ def test_domesticas_y_exoticas(servidor, tmp_path):
     c.pedir("POST", f"/api/sesiones/{id_}/generar", {})
     c.esperar(id_, "generado")
     carpeta = app.sesiones[id_].carpeta
-    filas = list(csv.DictReader((carpeta / "base_limpia_larga.csv").read_text(encoding="utf-8").splitlines()))
+    filas = leer_csv(carpeta / "base_limpia_larga.csv")
     perro = next(f for f in filas if f["nombre_comun"] == "Perro")
     conejo = next(f for f in filas if f["nombre_comun"] == "Conejo")
     assert (perro["origen"], perro["excluir_motivo"]) == ("doméstica", "")  # se eligió dejarla dentro

@@ -71,6 +71,11 @@ sobrescribe una auditoría anterior, que puede tener decisiones anotadas):
 | `base_limpia_larga.csv` | Tabla larga para R/PAST con las uniones rehechas en código. No borra filas: `tipo_abundancia` (conteo / presencia «P»), `origen` (doméstica / exótica / vacío si es nativa o no está en las listas), `excluir_motivo` (doméstica —se puede cambiar—, duplicado marcado en la revisión, estación inexistente, especie fuera de nombres BD), `usar_en_abundancia` (no para presencia, evidencia indirecta o abundancia no válida) y largo/ancho/área de transecto para densidades. |
 | `hallazgos.csv` | Los mismos hallazgos de la hoja HALLAZGOS, en CSV. |
 
+Los CSV salen en el formato de Excel en español, para abrirlos con doble clic: columnas
+separadas por `;`, coma decimal (`71,6`) y UTF-8 con BOM (tildes y emojis bien). En R se leen
+con `read.csv2("base_limpia_larga.csv", fileEncoding = "UTF-8-BOM")` o `readr::read_csv2()`.
+Con Excel en inglés, cambia `csv.separador` a `","` y `csv.decimal` a `"."` en `config.yaml`.
+
 Con `--solo-reporte` no se escriben `_CORREGIDA.xlsx` ni `cambios_aplicados.csv`; el reporte
 muestra el puntaje *proyectado* tras las auto-correcciones.
 

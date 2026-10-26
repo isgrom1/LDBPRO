@@ -56,6 +56,8 @@ POR_DEFECTO: dict = {
         "excluir_del_analisis": False,
     },
     "aves": {"clase": "Aves", "horario_baja_actividad": ["12:00", "17:00"]},
+    # Formato de los CSV: el de Excel en español (con Excel en inglés: separador "," y decimal ".")
+    "csv": {"separador": ";", "decimal": ","},
     "horarios": {
         # R12: los playback se hacen de noche; solo se marca uno hecho claramente de día
         "nocturno": ["18:00", "07:00"],

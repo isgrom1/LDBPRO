@@ -88,3 +88,10 @@ horarios:
   # claramente de día, fuera de este rango
   nocturno: ["18:00", "07:00"]
   metodologias_nocturnas: [Playback aves, Playback anfibios]
+
+# Formato de los CSV (hallazgos, cambios y base larga): el de Excel en español, para abrirlos con
+# doble clic. En R se leen con read.csv2(archivo, fileEncoding = "UTF-8-BOM") o readr::read_csv2().
+# Con Excel en inglés usa separador "," y decimal ".".
+csv:
+  separador: ";"
+  decimal: ","

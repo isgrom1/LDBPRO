@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import csv
 import shutil
 import subprocess
 import sys
@@ -11,6 +10,7 @@ from pathlib import Path
 
 import openpyxl
 import pytest
+from conftest import leer_csv
 
 from auditor.cli import ejecutar
 from auditor.formato import (
@@ -69,7 +69,7 @@ def test_archivo_de_revision(resultado):
 
 
 def test_cambios_aplicados_csv(resultado):
-    filas = list(csv.DictReader(open(resultado.archivos["cambios"], encoding="utf-8")))
+    filas = leer_csv(resultado.archivos["cambios"])
     assert len(filas) == len(resultado.cambios)
     assert set(filas[0]) >= {"hoja", "celda", "valor_anterior", "valor_nuevo", "regla"}
     k19 = next(f for f in filas if f["celda"] == "K19")
@@ -77,7 +77,7 @@ def test_cambios_aplicados_csv(resultado):
 
 
 def test_base_limpia_larga(resultado):
-    filas = list(csv.DictReader(open(resultado.archivos["base"], encoding="utf-8")))
+    filas = leer_csv(resultado.archivos["base"])
     assert list(filas[0]) == COLUMNAS_BASE
     assert len(filas) == 198  # no se borran filas
     caballo = next(f for f in filas if f["nombre_cientifico"] == "Equus caballus")
@@ -92,7 +92,11 @@ def test_base_limpia_larga(resultado):
     assert {f["nombre_comun"] for f in gay} == {"Cometocino de Gay"}  # unión rehecha con el nombre corregido
     pmf34 = next(f for f in filas if f["estacion"] == "PMF34")
     assert pmf34["ambiente"] == "Medio alto"  # la unificación de ambientes la decide el usuario (E03)
-    assert next(f for f in filas if f["estacion"] == "PMF55")["largo_transecto_m"] == "71.6"
+    pmf55 = next(f for f in filas if f["estacion"] == "PMF55")
+    assert pmf55["largo_transecto_m"] == "71,6"  # coma decimal, como lo lee Excel en español
+    assert "R18, R21" in pmf55["hallazgos_pendientes"] and ";" not in pmf55["hallazgos_pendientes"]
+    crudo = resultado.archivos["base"].read_bytes()
+    assert crudo.startswith(b"\xef\xbb\xbf") and crudo[3:].startswith(b"estacion;ambiente;")  # BOM y «;»
 
 
 def test_reporte_md(resultado):

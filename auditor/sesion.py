@@ -365,7 +365,7 @@ def generar(
         escribir_con_cambios(analisis.ruta_xlsx, corregida, por_hoja, permitir)
         archivos["corregida"] = corregida
         archivos["cambios"] = carpeta / "cambios_aplicados.csv"
-        escribir_cambios_csv(archivos["cambios"], cambios)
+        escribir_cambios_csv(archivos["cambios"], cambios, cfg)
         informar("Verificando la planilla corregida…")
         verificacion = verificar_corregida(
             analisis.ruta_xlsx, corregida, por_hoja, con_libreoffice, cfg,
@@ -392,9 +392,9 @@ def generar(
         despues, analisis.puntaje_antes, p_despues, resueltos, cfg, estadisticas, len(cambios), textos,
     )
     archivos["hallazgos"] = carpeta / "hallazgos.csv"
-    escribir_hallazgos_csv(archivos["hallazgos"], analisis.antes, resueltos, pendientes, textos)
+    escribir_hallazgos_csv(archivos["hallazgos"], analisis.antes, resueltos, pendientes, textos, cfg)
     archivos["base"] = carpeta / "base_limpia_larga.csv"
-    escribir_base_larga(archivos["base"], filas_base_larga(libro_base, ctx_base, hallazgos_base, cfg))
+    escribir_base_larga(archivos["base"], filas_base_larga(libro_base, ctx_base, hallazgos_base, cfg), cfg)
     archivos["reporte"] = carpeta / "reporte.md"
     orden = ["revision", "corregida", "cambios", "reporte", "base", "hallazgos"]
     escribir_reporte(

@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import csv
 import warnings
 import zipfile
 
 import openpyxl
 import pytest
+from conftest import leer_csv
 
 from auditor.config import cargar_config
 from auditor.demo import crear_planilla_demo
@@ -73,7 +73,7 @@ def test_presencia_duplicados_y_motivos_de_terreno(analisis, tmp_path):
     r = generar(analisis, tmp_path, decisiones, con_libreoffice=False, informar=lambda *a: None)
     assert r.verificacion.todo_ok
     assert not [h for h in r.hallazgos_despues if h.id_regla == "R15" and h.celda == r15.celda]
-    filas = list(csv.DictReader(r.archivos["base"].read_text(encoding="utf-8").splitlines()))
+    filas = leer_csv(r.archivos["base"])
     cururo = next(f for f in filas if f["nombre_comun"] == "Cururo")
     assert (cururo["abundancia"], cururo["tipo_abundancia"], cururo["usar_en_abundancia"]) == ("", "presencia", "no")
     assert cururo["excluir_motivo"] == ""  # entra a la riqueza
@@ -166,7 +166,7 @@ def test_generar_con_decisiones(analisis, tmp_path):
     columnas = [c.value for c in h[1]]
     decisiones_escritas = [h.cell(i, columnas.index("Decisión / Corrección") + 1).value for i in range(2, h.max_row + 1)]
     assert any(d and "son dos individuos" in d for d in decisiones_escritas)
-    cambios = list(csv.DictReader(open(r.archivos["cambios"], encoding="utf-8")))
+    cambios = leer_csv(r.archivos["cambios"])
     assert {c["regla"] for c in cambios} >= {"MANUAL:R14", "MANUAL:R06"}
     assert "## Decisiones tomadas en la revisión (3)" in r.archivos["reporte"].read_text(encoding="utf-8")
     with zipfile.ZipFile(r.archivos["corregida"]) as z:

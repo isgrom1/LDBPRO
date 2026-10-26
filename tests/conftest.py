@@ -6,6 +6,8 @@ datos del proyecto). Ponla en tests/datos/ o indica su ruta en la variable PLANI
 
 from __future__ import annotations
 
+import csv
+import io
 import os
 from datetime import date
 from pathlib import Path
@@ -67,6 +69,11 @@ def escenario(planilla, tmp_path_factory) -> Path:
 def resultado_escenario(escenario, tmp_path_factory):
     salida = tmp_path_factory.mktemp("auditoria_escenario")
     return ejecutar(escenario, salida=salida, con_libreoffice=False, hoy=HOY, informar=lambda *a: None)
+
+
+def leer_csv(ruta) -> list[dict]:
+    """Los CSV salen para Excel en español: «;», coma decimal y BOM."""
+    return list(csv.DictReader(io.StringIO(Path(ruta).read_text(encoding="utf-8-sig")), delimiter=";"))
 
 
 def hallazgos(res, regla=None, **filtros):

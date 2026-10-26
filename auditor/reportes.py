@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import re
 from collections import Counter, defaultdict
+from contextlib import contextmanager
 from datetime import date
 from pathlib import Path
 
@@ -26,27 +27,44 @@ def _md(texto) -> str:
 
 
 # --------------------------------------------------------------------------- CSV
+# Se abren con doble clic en Excel en español: «;» separa las columnas, la coma es el decimal y
+# el BOM hace que Excel reconozca UTF-8 (tildes, emojis). En R: read.csv2(ruta, fileEncoding =
+# "UTF-8-BOM") o readr::read_csv2(ruta). Separador y decimal se cambian en config.yaml (csv).
 
 
-def escribir_cambios_csv(ruta: Path, cambios: list[Cambio]) -> None:
-    with open(ruta, "w", newline="", encoding="utf-8") as f:
-        w = csv.writer(f)
-        w.writerow(["hoja", "celda", "valor_anterior", "valor_nuevo", "regla", "valor_anterior_visible"])
+@contextmanager
+def _csv(ruta: Path, config: dict | None):
+    formato = (config or {}).get("csv") or {}
+    separador, decimal = formato.get("separador", ";"), formato.get("decimal", ",")
+
+    def celda(v):
+        if isinstance(v, float):
+            return f"{v:.10g}".replace(".", decimal)
+        return v
+
+    with open(ruta, "w", newline="", encoding="utf-8-sig") as f:
+        w = csv.writer(f, delimiter=separador)
+        yield lambda fila: w.writerow([celda(v) for v in fila])
+
+
+def escribir_cambios_csv(ruta: Path, cambios: list[Cambio], config: dict | None = None) -> None:
+    with _csv(ruta, config) as fila:
+        fila(["hoja", "celda", "valor_anterior", "valor_nuevo", "regla", "valor_anterior_visible"])
         for c in sorted(cambios, key=lambda c: (c.hoja, c.fila, c.celda)):
             anterior = "" if c.valor_anterior is None else c.valor_anterior
-            w.writerow([c.hoja, c.celda, anterior, c.valor_nuevo, "+".join(c.reglas), mostrar(c.valor_anterior)])
+            fila([c.hoja, c.celda, anterior, c.valor_nuevo, "+".join(c.reglas), mostrar(c.valor_anterior)])
 
 
 def escribir_hallazgos_csv(
-    ruta: Path, hallazgos: list[Hallazgo], resueltos: set[str], pendientes: set, decisiones: dict[str, str] | None = None
+    ruta: Path, hallazgos: list[Hallazgo], resueltos: set[str], pendientes: set, decisiones: dict[str, str] | None = None,
+    config: dict | None = None,
 ) -> None:
     decisiones = decisiones or {}
-    with open(ruta, "w", newline="", encoding="utf-8") as f:
-        w = csv.writer(f)
-        w.writerow(["id_regla", "severidad", "hoja", "celda", "fila", "id_estacion", "valor_actual", "problema",
+    with _csv(ruta, config) as w:
+        w(["id_regla", "severidad", "hoja", "celda", "fila", "id_estacion", "valor_actual", "problema",
                     "sugerencia", "auto_corregible", "aplicado", "valor_nuevo", "pendiente", "decision"])
         for h in hallazgos:
-            w.writerow([
+            w([
                 h.id_regla, h.severidad.etiqueta, h.hoja, h.celda or "", h.fila or "", h.id_estacion or "",
                 "" if h.valor_actual is None else mostrar(h.valor_actual), h.problema, h.sugerencia,
                 "sí" if h.auto_corregible else "no",
@@ -118,7 +136,7 @@ def filas_base_larga(libro: Libro, ctx: Contexto, hallazgos: list[Hallazgo], con
             "area_muestreada_m2": round(largo * ancho) if largo is not None and ancho is not None else "",
             "origen": origen,
             "excluir_motivo": "; ".join(motivos),
-            "hallazgos_pendientes": ";".join(sorted(por_fila.get((t.hoja, f), set()))),
+            "hallazgos_pendientes": ", ".join(sorted(por_fila.get((t.hoja, f), set()))),
             "hoja": t.hoja,
             "fila": f,
         })
@@ -181,11 +199,11 @@ def _lineas_origen(origen: dict[str, list[dict]], config: dict) -> list[str]:
     return L
 
 
-def escribir_base_larga(ruta: Path, filas: list[dict]) -> None:
-    with open(ruta, "w", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=COLUMNAS_BASE)
-        w.writeheader()
-        w.writerows(filas)
+def escribir_base_larga(ruta: Path, filas: list[dict], config: dict | None = None) -> None:
+    with _csv(ruta, config) as fila:
+        fila(COLUMNAS_BASE)
+        for f in filas:
+            fila([f[k] for k in COLUMNAS_BASE])
 
 
 # --------------------------------------------------------------------------- reporte.md
