@@ -68,7 +68,7 @@ sobrescribe una auditoría anterior, que puede tener decisiones anotadas):
 | `<nombre>_CORREGIDA.xlsx` | El original con **solo** las auto-correcciones seguras, editado a nivel XML: conserva listas desplegables (`x14:dataValidation`), fórmulas y estilos; `fullCalcOnLoad="1"` para que Excel recalcule al abrir. |
 | `cambios_aplicados.csv` | hoja, celda, valor anterior, valor nuevo y regla de cada corrección. |
 | `reporte.md` | Puntaje antes/después, qué se corrigió solo, qué falta decidir agrupado por estación, verificación del archivo corregido y mapeo de columnas detectado. |
-| `base_limpia_larga.csv` | Tabla larga para R/PAST con las uniones rehechas en código. No borra filas: `origen` (doméstica / exótica / vacío si es nativa o no está en las listas), `excluir_motivo` (doméstica —se puede cambiar—, estación inexistente, especie fuera de nombres BD), `usar_en_abundancia` (no para evidencia indirecta o abundancia no válida) y largo/ancho/área de transecto para densidades. |
+| `base_limpia_larga.csv` | Tabla larga para R/PAST con las uniones rehechas en código. No borra filas: `tipo_abundancia` (conteo / presencia «P»), `origen` (doméstica / exótica / vacío si es nativa o no está en las listas), `excluir_motivo` (doméstica —se puede cambiar—, duplicado marcado en la revisión, estación inexistente, especie fuera de nombres BD), `usar_en_abundancia` (no para presencia, evidencia indirecta o abundancia no válida) y largo/ancho/área de transecto para densidades. |
 | `hallazgos.csv` | Los mismos hallazgos de la hoja HALLAZGOS, en CSV. |
 
 Con `--solo-reporte` no se escriben `_CORREGIDA.xlsx` ni `cambios_aplicados.csv`; el reporte
@@ -102,9 +102,9 @@ muestra el puntaje *proyectado* tras las auto-correcciones.
 | E05 | Coordenada no numérica | 🔴 | Sí |
 | E06 | Coordenada vacía o 0 | 🔴 | No |
 | E07 | Coordenada fuera de lugar (posible error de dígito) | 🟠 | No |
-| E08 | Largo del transecto fuera de rango | 🟠 | No |
+| E08 | Largo del transecto fuera de 150–250 m: 🟡 si es corto o algo largo (terreno; el área usa el largo real), 🟠 bajo 10 m o sobre 400 m (probable error de coordenada) | 🟡/🟠 | No |
 | E09 | Coordenadas idénticas a las de otra estación (copy-paste) | 🔴 | No |
-| E10 | Punto de la estación lejos del punto medio del transecto | 🟠 | No |
+| E10 | Punto de la estación a más de 150 m del punto medio del transecto: 🟡 hasta 500 m (punto inaccesible), 🟠 más lejos | 🟡/🟠 | No |
 | E11 | Metodologías con valores distintos de 1/0 | 🟠 | Sí |
 | E12 | Estación sin registros | 🟡 | No |
 | E13 | Proyecto/Región/Temporada inconsistentes entre filas | 🟠 | Sí² |
@@ -115,16 +115,16 @@ muestra el puntaje *proyectado* tras las auto-correcciones.
 | R03 | Nombre común existe en nombres BD solo ignorando mayúsculas/espacios | 🔴 | Sí |
 | R04 | Nombre genérico (sp./spp.) | 🟠 | No |
 | R05 | Mismo nombre científico escrito con distintos nombres comunes | 🟠 | Sí |
-| R06 | Abundancia vacía, no numérica, ≤0 o decimal | 🔴 | No |
-| R07 | Abundancia atípica para la especie | 🟡 | No |
+| R06 | Abundancia vacía, no numérica, ≤0 o decimal (la «P» de presencia no es error: R26) | 🔴 | No |
+| R07 | Abundancia alta para la especie (solo desde 10 individuos; si fue una bandada, está bien) | 🟡 | No |
 | R08 | Especie doméstica | 🟡 | No |
 | R09 | Fecha vacía o fuera del rango de la campaña | 🟠 | No |
 | R10 | Hora vacía | 🟠 | No |
-| R11 | Aves en transecto fuera del horario de mayor actividad | 🟡 | No |
+| R11 | Aves en transecto fuera del horario de mayor actividad (indicador; no es error) | 🟡 | No |
 | R12 | Playback (aves o anfibios) hecho claramente de día, o cámara trampa a las 00:00 exactas | 🟠 | No |
 | R13 | Metodología o tipo de registro fuera de la lista de validación | 🟠 | No |
 | R14 | Directo/Indirecto incoherente con el tipo de registro | 🟠 | No |
-| R15 | Registro duplicado | 🟠 | No |
+| R15 | Registro duplicado: 🟠 si las filas son idénticas, 🟡 si cambia algo (fotos, comportamiento…), con las dos filas lado a lado; macho/hembra o adulto/juvenil no cuentan como duplicado | 🟡/🟠 | No |
 | R16 | Coordenada de captura lejos de su estación | 🟠 | No |
 | R17 | Texto con duda en Observaciones o Fotos | 🟡 | No |
 | R18 | Fotos con separadores o códigos inconsistentes | 🟡 | No |
@@ -135,7 +135,9 @@ muestra el puntaje *proyectado* tras las auto-correcciones.
 | R23 | Observación menciona otra metodología | 🟡 | No |
 | R24 | Fila con datos pero sin ID Estación | 🟠 | No |
 | R25 | Especie exótica (conejo, liebre, gorrión, codorniz, guarén…): se informa, no se excluye | 🟡 | No |
-| B01 | Diccionario nombres BD con entradas problemáticas | 🟡 | No |
+| R26 | Registro de presencia «P» (sin conteo): cuenta para riqueza y presencia/ausencia, no para abundancia | 🟡 | Sí⁴ |
+| R27 | Nombre común que en nombres BD tiene varias especies (la planilla completa la primera) | 🟡 | No |
+| B01 | Lista de especies de la plantilla (nombres BD) con entradas problemáticas: solo aviso | 🟡 | No |
 | T01 | Plantilla: una fórmula y su lista de validación no coinciden (p. ej. «Huella» vs «Huellas») | 🟡 | Sí³ |
 | X01 | Columna de fórmula con un valor fijo | 🟠 | No |
 | X02 | Valor cacheado de una fórmula desactualizado | 🟡 | No |
@@ -154,7 +156,20 @@ revisión las lista y permite dejar cada grupo dentro o fuera del análisis para
 la línea de comandos se usa `excluir_del_analisis` de `config.yaml`, donde también están las
 listas.
 
-E14, E15, R21–R25, B01, T01, X01 y X02 son adicionales a la lista original.
+⁴ Solo unifica variantes («p», «Presencia», «presente») a «P».
+
+**Motivos de terreno.** Varios avisos traen un botón con el motivo habitual («No se pudo recorrer
+completo», «No se pudo llegar al punto», «Son registros distintos», «Conteo real (bandada)»,
+«Horario por logística de terreno»): un clic lo deja como «está bien así» con esa nota, que
+queda en el informe. En un duplicado, «Es el mismo» anota `[DUPLICADO de la fila N]` en
+Observaciones (para borrar la fila antes de entregar) y lo saca de `base_limpia_larga.csv`.
+
+**Abundancia «P».** La LdB de XPE usa «P: Presencia» en sus tablas de abundancia para especies
+detectadas sin conteo (p. ej. una cururera que se escucha). El auditor la acepta: en la base
+larga queda con `tipo_abundancia = presencia`, entra a la riqueza y a la presencia/ausencia
+(curvas de acumulación, Chao2, diversidad beta) y no a abundancia, densidad ni Shannon/Simpson.
+
+E14, E15, R21–R27, B01, T01, X01 y X02 son adicionales a la lista original.
 
 ### Agregar una regla
 

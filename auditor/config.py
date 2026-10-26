@@ -11,7 +11,13 @@ POR_DEFECTO: dict = {
     "transecto": {
         "largo_min_m": 150,
         "largo_max_m": 250,
+        # Fuera de 150–250 m es un aviso (el terreno manda); bajo 10 m o sobre 400 m casi siempre
+        # es un error de coordenada.
+        "largo_minimo_creible_m": 10,
+        "largo_sospechoso_m": 400,
         "distancia_max_estacion_a_punto_medio_m": 150,
+        # Más lejos que esto ya no parece un punto inaccesible sino una coordenada mal escrita
+        "distancia_sospechosa_estacion_m": 500,
     },
     # Ancho total de la banda (m), como en la LdB de XPE: herpetozoos 200 × 5 m,
     # aves y mamíferos 200 × 50 m (25 m a cada lado). Área = largo × ancho.
@@ -60,6 +66,8 @@ POR_DEFECTO: dict = {
     },
     "fechas": {"tolerancia_dias": 3},
     "abundancia": {
+        # R07 no marca conteos bajo este número: 6 perdices o 9 chincoles no son raros
+        "min_atipica": 10,
         # R07: atípica si > Q3 + factor_iqr × max(IQR, 1), o > p99 cuando hay suficientes datos
         "min_registros_especie": 5,
         "factor_iqr": 3,

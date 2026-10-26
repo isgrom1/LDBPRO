@@ -58,7 +58,9 @@ ESTATICOS = Path(__file__).resolve().parent / "static"
 MAX_SUBIDA = 200 * 1024 * 1024
 # Reglas donde escribir otro valor en la celda no resuelve nada: se decide con «está bien así»
 # o con las acciones sugeridas (p. ej. una estación sin registros o un duplicado).
-SIN_EDICION = {"E12", "R08", "R11", "R15", "R25", "T01", "X01", "X02"}
+SIN_EDICION = {"E12", "R08", "R11", "R15", "R25", "R27", "T01", "X01", "X02"}
+# Problemas de la plantilla de XPE (no de la planilla): un aviso aparte, sin tarjetas ni decisiones
+SOLO_AVISO = {"B01"}
 DESCRIPCIONES = {
     "corregida": "La planilla original con las correcciones. Conserva listas desplegables, fórmulas y formato.",
     "revision": "Copia para mirar: celdas coloreadas y comentadas, hojas RESUMEN y HALLAZGOS.",
@@ -163,8 +165,11 @@ class SesionApp:
     def datos(self) -> dict:
         a = self.analisis
         libro = a.libro
-        hallazgos = []
+        hallazgos, plantilla = [], []
         for h in a.antes:
+            if h.id_regla in SOLO_AVISO:
+                plantilla.append({"celda": h.celda, "problema": h.problema})
+                continue
             id_ = _hash(h.clave())
             editable = h.id_regla not in SIN_EDICION and es_editable(libro, h.hoja, h.celda)
             columna = tipo = None
@@ -180,6 +185,7 @@ class SesionApp:
                 "problema": h.problema, "sugerencia": h.sugerencia,
                 "auto": mostrar(h.correccion.valor_nuevo) if h.correccion else None,
                 "acciones": [x.etiqueta for x in h.acciones], "opciones": h.opciones,
+                "justificaciones": h.justificaciones, "comparacion": h.comparacion,
                 "editable": editable, "tipo": tipo, "columna": columna, "contexto": _contexto(libro, h),
                 "motivo": None if editable else ("sin_edicion" if h.id_regla in SIN_EDICION
                                                  else "formula" if h.celda and h.fila else "general"),
@@ -197,10 +203,11 @@ class SesionApp:
             "hojas_registros": [{"hoja": t.hoja, "n": len(t.filas_datos)} for t in libro.registros],
             "hojas_sin_datos": libro.registros_sin_datos, "avisos": libro.avisos,
             "puntaje_antes": _puntaje(a.puntaje_antes), "puntaje_auto": _puntaje(a.puntaje_despues),
-            "hallazgos": hallazgos, "estaciones": estaciones,
+            "hallazgos": hallazgos, "plantilla": plantilla, "estaciones": estaciones,
             "reglas": {r.id: {"titulo": r.titulo, "nivel": r.severidad.nivel, "auto": r.auto_corregible}
                        for r in REGLAS.values()},
             "aves": next(iter(r11.values()), None),
+            "presencias": a.ctx.estadisticas.get("R26", {}),
             "sin_registros": [h.id_estacion for h in a.antes if h.id_regla == "E12"],
             "nombres_bd": sorted({limpiar(libro.nombres_bd.valor(f, "nombre_comun")) for f in libro.nombres_bd.filas_datos}),
             "decisiones": {_hash(k): self._decision_json(d) for k, d in self.decisiones.items()},
@@ -231,8 +238,8 @@ class SesionApp:
                 "libreoffice": None if v.libreoffice is None else not v.libreoffice["errores_nuevos"],
                 "todo_ok": v.todo_ok,
             }
-        pendientes = [h for h in r.hallazgos_despues
-                      if h.clave() not in {k for k, d in r.decisiones.items() if d.tipo == "ok"}]
+        pendientes = [h for h in r.hallazgos_despues if h.id_regla not in SOLO_AVISO
+                      and h.clave() not in {k for k, d in r.decisiones.items() if d.tipo == "ok"}]
         return {
             "puntaje_antes": _puntaje(r.puntaje_antes), "puntaje_despues": _puntaje(r.puntaje_despues),
             "n_cambios": len(r.cambios), "n_manuales": sum(any(x.startswith("MANUAL") for x in c.reglas) for c in r.cambios),
@@ -247,7 +254,7 @@ class SesionApp:
             version, decisiones = self.version, dict(self.decisiones)
         hallazgos, p = proyectar(self.analisis, decisiones)
         ok = {k for k, d in decisiones.items() if d.tipo == "ok"}
-        pendientes = [h for h in hallazgos if h.clave() not in ok]
+        pendientes = [h for h in hallazgos if h.clave() not in ok and h.id_regla not in SOLO_AVISO]
         datos = {"puntaje": _puntaje(p), "version": version,
                  "pendientes": {n: sum(1 for h in pendientes if h.severidad.nivel == n) for n in (3, 2, 1)}}
         with self.lock:

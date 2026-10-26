@@ -10,8 +10,9 @@ from datetime import date, time, timedelta
 
 from ..contexto import distancia, texto_id
 from ..hallazgos import Accion, Severidad, regla
-from ..modelo import HOJA_TA
+from ..modelo import HOJA_TA, NARANJAS, SOBRESCRIBIBLES
 from ..texto import (
+    PRESENCIA,
     a_fecha,
     a_numero,
     clave,
@@ -232,32 +233,53 @@ def r05(ctx):
 @regla("R06", "Abundancia vacía, no numérica, ≤0 o decimal", CRIT)
 def r06(ctx):
     for t, f, u in ctx.iter_registros():
-        if not t.tiene("abundancia"):
+        if not t.tiene("abundancia") or u["presencia"]:  # «P» = presencia: lo ve R26
             continue
         v = t.valor(f, "abundancia")
         n = a_numero(v)
         if es_vacio(v):
             problema = "Abundancia vacía."
         elif n is None:
-            presencia = " ('P' suele significar 'presencia')" if clave(v) in ("p", "presente", "presencia", "x") else ""
-            problema = f"Abundancia no numérica: '{mostrar(v)}'{presencia}. R/PAST no pueden sumarla."
+            problema = f"Abundancia no numérica: '{mostrar(v)}'. R/PAST no pueden sumarla."
         elif n <= 0:
             problema = f"Abundancia {mostrar(n)} ≤ 0."
         elif not float(n).is_integer():
             problema = f"Abundancia decimal ({mostrar(n)}): debe ser un conteo de individuos."
         else:
             continue
+        poner_p = Accion("Poner P (presencia)", PRESENCIA)
         if u["dir_ind_calc"] == "Indirecto":
             sugerencia = (
-                f"Es evidencia indirecta ({u['tipo_registro']}): entra a la riqueza pero no a la "
-                "abundancia. Déjala vacía (NA) y exclúyela de densidades e índices de abundancia."
+                f"Es evidencia indirecta ({u['tipo_registro']}): entra a la riqueza pero no a la abundancia. "
+                "Pon «P» (presencia, como en las tablas de la LdB de XPE) o déjala vacía."
             )
-            acciones = [Accion("Dejar vacía (NA)", None)] if not es_vacio(v) else []
+            acciones = [poner_p] + ([Accion("Dejar vacía (NA)", None)] if not es_vacio(v) else [])
         else:
             tipo = u["tipo_registro"].lower() or "registro directo"
-            sugerencia = f"Es {tipo}: si no se contó, el mínimo defendible es 1 individuo."
-            acciones = [Accion("Poner 1", 1)]
+            sugerencia = (f"Es {tipo}: si se contaron individuos, escribe el número; si no se pudieron contar "
+                          "(p. ej. una colonia que se escucha), pon «P» (presencia).")
+            acciones = [poner_p, Accion("Poner 1", 1)]
         yield ctx.hallazgo("R06", t, f, "abundancia", problema, sugerencia, acciones=acciones)
+
+
+@regla("R26", "Registro de presencia (P)", INFO, auto_corregible=True)
+def r26(ctx):
+    for t, f, u in ctx.iter_registros():
+        if not u["presencia"]:
+            continue
+        v = t.valor(f, "abundancia")
+        estaciones = ctx.estadisticas.setdefault("R26", {}).setdefault(u["nombre_bd"] or u["nombre"], [])
+        if u["id"] and u["id"] not in estaciones:
+            estaciones.append(u["id"])
+        correccion = {} if v == PRESENCIA else {"correccion": PRESENCIA}
+        yield ctx.hallazgo(
+            "R26", t, f, "abundancia",
+            f"Abundancia «{mostrar(v)}» = presencia: se registró {u['especie'] or u['nombre']} sin contar individuos.",
+            "Está bien (la LdB de XPE usa «P: Presencia» en sus tablas). Cuenta para la riqueza y la "
+            "presencia/ausencia (curvas de acumulación, Chao2, diversidad beta), no para abundancia, densidad "
+            "ni Shannon/Simpson." + ("" if v == PRESENCIA else " Se unifica como «P»."),
+            **correccion,
+        )
 
 
 @regla("R07", "Abundancia atípica para la especie", INFO)
@@ -278,12 +300,15 @@ def r07(ctx):
         if len(valores) >= cfg["min_registros_percentil"]:
             pctl = statistics.quantiles(valores, n=100, method="inclusive")[cfg["percentil"] - 1]
         for t, f, n in items:
-            if n > limite or (pctl is not None and n > pctl):
+            if n >= cfg["min_atipica"] and (n > limite or (pctl is not None and n > pctl)):
                 yield ctx.hallazgo(
                     "R07", t, f, "abundancia",
-                    f"Abundancia {mostrar(n)} atípica para {especie}: mediana {mostrar(mediana)}, "
-                    f"Q3 {mostrar(q3)}, límite Q3 + {cfg['factor_iqr']}×IQR = {limite:.1f} (n = {len(valores)}).",
-                    "Confirma el conteo (¿bandada?, ¿error de tipeo?); si es real, déjalo.",
+                    f"Abundancia {mostrar(n)} alta para {especie}: en esta planilla la mediana es "
+                    f"{mostrar(mediana)} y lo habitual llega a {limite:.0f} ({len(valores)} registros).",
+                    "Si fue una bandada, está bien y no causa problemas en los análisis: solo pesa más en la "
+                    "abundancia relativa y la dominancia, que es lo real. Solo revisa que no sea un error de "
+                    "tipeo (p. ej. 30 por 3).",
+                    justificaciones=["Conteo real (bandada)"],
                 )
 
 
@@ -416,9 +441,12 @@ def r11(ctx):
             f"El {pct:.0f}% de los registros de aves en transecto ({int(en_rango.sum())} de {len(con_hora)}) "
             f"se hizo entre {ini:%H:%M} y {fin:%H:%M}, horario de baja actividad de aves. Estaciones con "
             f"la mayoría de sus registros de aves en ese horario ({len(mayoria)} de {len(por_est)}): {', '.join(mayoria)}.",
-            "La detectabilidad de aves cae al mediodía: la riqueza y las abundancias pueden estar "
-            "subestimadas. Decláralo como limitación en el informe o repite transectos temprano en la mañana.",
+            "No es un error de la planilla ni hay que cambiar nada. Al mediodía las aves se mueven y cantan "
+            "menos, así que se detectan menos: la riqueza y las abundancias de esas estaciones pueden salir "
+            "algo más bajas que en la mañana. Basta con mencionarlo en el informe (horario de muestreo por "
+            "la logística de terreno).",
             celda=f"{t.columnas['hora']}{t.fila_encabezado}", valor=f"{pct:.0f}%",
+            justificaciones=["Horario por logística de terreno"],
         )
 
 
@@ -515,24 +543,71 @@ def r14(ctx):
             )
 
 
+# Si difieren con valores definidos (macho/hembra, adulto/juvenil) son dos individuos, no un duplicado
+_DISTINGUEN_INDIVIDUOS = ("sexo", "estado_desarrollo")
+_SIN_DATO = {"", "-", "indeterminado", "no registrada", "no registrado", "sin dato", "nd", "s/i"}
+_NO_COMPARAR = {"n"}  # correlativo de la fila
+MARCA_DUPLICADO = "[DUPLICADO de la fila {}]"
+RE_MARCA_DUPLICADO = re.compile(r"\[DUPLICADO de la fila (\d+)\]")
+
+
+def _dato(t, f, k) -> str:
+    v = t.valor(f, k)
+    return "" if es_vacio(v) else mostrar(v)
+
+
 @regla("R15", "Registro duplicado", ADV)
 def r15(ctx):
     vistos = {}
     for t, f, u in ctx.iter_registros():
         if u["fecha"] is None or u["hora"] is None:
             continue
-        llave = (t.hoja, clave(u["id"]), clave(u["especie"] or u["nombre"]), u["fecha"], u["hora"], u["abundancia"])
-        if llave in vistos:
-            primera = vistos[llave]
+        llave = (t.hoja, clave(u["id"]), clave(u["especie"] or u["nombre"]), u["fecha"], u["hora"],
+                 u["abundancia"], u["presencia"])
+        if llave not in vistos:
+            vistos[llave] = f
+            continue
+        primera = vistos[llave]
+        observaciones = _dato(t, f, "observaciones") if t.tiene("observaciones") else ""
+        if RE_MARCA_DUPLICADO.search(observaciones):
+            continue  # ya se marcó como duplicado en la revisión
+        if any(t.tiene(k) and _dato(t, primera, k) != _dato(t, f, k)
+               and clave(_dato(t, primera, k)) not in _SIN_DATO and clave(_dato(t, f, k)) not in _SIN_DATO
+               for k in _DISTINGUEN_INDIVIDUOS):
+            continue
+        naranjas = NARANJAS.get(t.hoja, set()) - SOBRESCRIBIBLES
+        distintas = [k for k in t.columnas if k not in naranjas and k not in _NO_COMPARAR
+                     and _dato(t, primera, k) != _dato(t, f, k)]
+        comparacion = [("", f"Fila {primera}", f"Fila {f}")] + [
+            (t.encabezados[k], _dato(t, primera, k) or "(vacío)", _dato(t, f, k) or "(vacío)") for k in distintas
+        ]
+        abundancia = "P" if u["presencia"] else mostrar(u["abundancia"])
+        iguales = f"misma estación, especie, fecha, hora ({u['hora']:%H:%M}) y abundancia ({abundancia})"
+        acciones = []
+        if t.tiene("observaciones"):
+            marca = MARCA_DUPLICADO.format(primera)
+            acciones = [Accion("Es el mismo: marcar como duplicado", f"{observaciones} {marca}".strip(),
+                               t.hoja, t.celda(f, "observaciones"))]
+        sugerencia = ("Si es el mismo individuo o la misma colonia anotado dos veces (visto y oído, o por dos "
+                      "personas), márcalo como duplicado: sale del análisis y queda anotado en Observaciones "
+                      "para borrar la fila antes de entregar. Si son registros distintos, déjalo así.")
+        if not distintas:
             yield ctx.hallazgo(
                 "R15", t, f, "nombre_comun",
-                f"Registro repetido: misma estación, especie, fecha, hora y abundancia que la fila {primera}.",
-                "Si es el mismo individuo (p. ej. visto y oído), deja uno; si son individuos distintos, "
-                "súmalos en un registro o corrige la hora.",
-                celdas_extra=[t.celda(primera, "nombre_comun")],
+                f"Fila idéntica a la {primera}: {iguales}, y nada más cambia.",
+                sugerencia, celdas_extra=[t.celda(primera, "nombre_comun")], acciones=acciones,
+                justificaciones=["Son registros distintos"],
             )
-        else:
-            vistos[llave] = f
+            continue
+        cambios = ", ".join(t.encabezados[k] for k in distintas)
+        pista = (" ¿El mismo individuo oído y visto?" if "tipo_registro" in distintas
+                 else " Con fotos distintas pueden ser dos registros reales." if "fotos" in distintas else "")
+        yield ctx.hallazgo(
+            "R15", t, f, "nombre_comun",
+            f"Posible duplicado de la fila {primera}: {iguales}. Cambia: {cambios}.{pista}",
+            sugerencia, severidad=INFO, celdas_extra=[t.celda(primera, "nombre_comun")], acciones=acciones,
+            justificaciones=["Son registros distintos"], comparacion=comparacion,
+        )
 
 
 @regla("R16", "Coordenada de captura lejos de su estación", ADV)

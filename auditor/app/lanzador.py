@@ -238,7 +238,8 @@ def autoprueba(registro: Path) -> int:
             datos = pedir("GET", f"/api/sesiones/{s['id']}?datos=1")["datos"]
             anotar(f"Planilla de ejemplo auditada: {len(datos['hallazgos'])} hallazgos, índice {datos['puntaje_antes']['indice']}")
             r06 = next(h for h in datos["hallazgos"] if h["regla"] == "R06")
-            pedir("PUT", f"/api/sesiones/{s['id']}/decisiones/{r06['id']}", {"tipo": "accion", "indice": 0})
+            pedir("PUT", f"/api/sesiones/{s['id']}/decisiones/{r06['id']}",
+                  {"tipo": "accion", "indice": r06["acciones"].index("Poner 1")})
             proy = pedir("GET", f"/api/sesiones/{s['id']}/proyeccion")
             anotar(f"Decisión aplicada; índice proyectado {proy['puntaje']['indice']}")
             pedir("POST", f"/api/sesiones/{s['id']}/generar", {})

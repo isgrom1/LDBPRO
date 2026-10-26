@@ -264,19 +264,39 @@ def e07(ctx):
 @regla("E08", "Largo del transecto fuera de rango", ADV)
 def e08(ctx):
     est = ctx.est
-    mn, mx = ctx.config["transecto"]["largo_min_m"], ctx.config["transecto"]["largo_max_m"]
+    cfg = ctx.config["transecto"]
+    mn, mx = cfg["largo_min_m"], cfg["largo_max_m"]
     for f in est.filas_datos:
         largo = ctx.largo_transecto(f)
         if largo is None or mn <= largo <= mx:
             continue
-        yield ctx.hallazgo(
-            "E08", est, f, "utm_e_ini",
-            f"El transecto mide {largo:.0f} m (Pitágoras entre inicio y fin), fuera del rango {mn}–{mx} m.",
-            "Revisa las coordenadas de inicio y fin. Si el largo es real, úsalo en las densidades "
-            "(base_limpia_larga.csv trae la columna largo_transecto_m).",
-            valor=f"{largo:.0f} m",
-            celdas_extra=[est.celda(f, c) for c in ("utm_s_ini", "utm_e_fin", "utm_s_fin")],
-        )
+        datos = {"valor": f"{largo:.0f} m",
+                 "celdas_extra": [est.celda(f, c) for c in ("utm_s_ini", "utm_e_fin", "utm_s_fin")]}
+        if largo < cfg["largo_minimo_creible_m"] or largo > cfg["largo_sospechoso_m"]:
+            yield ctx.hallazgo(
+                "E08", est, f, "utm_e_ini",
+                f"El transecto mide {largo:.0f} m en línea recta entre inicio y fin (lo habitual es {mn}–{mx} m): "
+                "con esa diferencia lo más probable es un error en una coordenada.",
+                "Revisa las coordenadas de inicio y fin con el GPS o el track.", **datos,
+            )
+        elif largo < mn:
+            yield ctx.hallazgo(
+                "E08", est, f, "utm_e_ini",
+                f"Transecto corto: {largo:.0f} m en línea recta entre inicio y fin (lo habitual es {mn}–{mx} m).",
+                f"Si no se pudo recorrer completo por el terreno, está bien: el área se calcula con el largo real "
+                f"({largo:.0f} m × ancho), así la densidad no se distorsiona. Si el recorrido no fue recto, el "
+                "largo real es mayor (mídelo en el track). Si no, revisa las coordenadas.",
+                severidad=INFO, justificaciones=["No se pudo recorrer completo (terreno)"], **datos,
+            )
+        else:
+            yield ctx.hallazgo(
+                "E08", est, f, "utm_e_ini",
+                f"Transecto más largo de lo habitual: {largo:.0f} m en línea recta entre inicio y fin ({mn}–{mx} m).",
+                "Si de verdad se recorrió ese largo, está bien: el área se calcula con el largo real. No lo "
+                f"recortes a {mx} m: si se contó fauna en todo el recorrido, dividir por un largo menor infla "
+                "la densidad. Si no, revisa las coordenadas.",
+                severidad=INFO, justificaciones=["Se recorrió ese largo"], **datos,
+            )
 
 
 @regla("E09", "Coordenadas idénticas a las de otra estación (copy-paste)", CRIT)
@@ -308,18 +328,29 @@ def e09(ctx):
 @regla("E10", "Punto de la estación lejos del punto medio del transecto", ADV)
 def e10(ctx):
     est = ctx.est
-    limite = ctx.config["transecto"]["distancia_max_estacion_a_punto_medio_m"]
+    cfg = ctx.config["transecto"]
+    limite, sospechosa = cfg["distancia_max_estacion_a_punto_medio_m"], cfg["distancia_sospechosa_estacion_m"]
     for f in est.filas_datos:
         p, m = ctx.punto(f), ctx.punto_medio(f)
         if p is None or m is None:
             continue
         d = distancia(p, m)
-        if d > limite:
+        if d <= limite:
+            continue
+        texto = (f"El punto de la estación {_xy(p)} está a {d:.0f} m del punto medio del transecto {_xy(m)} "
+                 f"(lo habitual es hasta {limite} m)")
+        if d > sospechosa:
             yield ctx.hallazgo(
-                "E10", est, f, "utm_e",
-                f"El punto de la estación {_xy(p)} está a {d:.0f} m del punto medio del transecto "
-                f"{_xy(m)} (máximo {limite} m).",
+                "E10", est, f, "utm_e", texto + ": a esa distancia parece una coordenada mal escrita.",
                 "Revisa la coordenada de la estación o las de inicio/fin.",
+                celdas_extra=[est.celda(f, "utm_s")],
+            )
+        else:
+            yield ctx.hallazgo(
+                "E10", est, f, "utm_e", texto + ".",
+                "Si al punto no se podía llegar y la coordenada es donde se pudo llegar, está bien: déjalo así "
+                "y menciónalo en el informe (punto reubicado por acceso). Si no, revisa la coordenada.",
+                severidad=INFO, justificaciones=["No se pudo llegar al punto (terreno)"],
                 celdas_extra=[est.celda(f, "utm_s")],
             )
 

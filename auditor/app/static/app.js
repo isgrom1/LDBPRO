@@ -305,6 +305,7 @@ function renderRevision() {
   }
   d.avisos.forEach((a) => avisos.push(`<div class="alerta alerta-info">⚠️ ${esc(a)}</div>`));
   avisos.push(htmlOrigen(d.origen));
+  avisos.push(htmlPlantilla(d.plantilla));
   $("#r-avisos").innerHTML = avisos.join("");
   renderIndicadores();
   renderPuntaje();
@@ -350,6 +351,33 @@ function htmlOrigen(origen) {
   </div>`;
 }
 
+// B01: la lista de especies viene en la plantilla de XPE; se avisa una vez, sin tarjetas
+function htmlPlantilla(items) {
+  if (!items || !items.length) return "";
+  const tipos = [
+    ["veces en nombres BD", "nombres comunes repetidos con especies distintas (p. ej. «Sapo de monte»)"],
+    ["La clase", "clases en latín (Mammalia, Reptilia) en vez de Mamíferos, Reptiles"],
+    ["", "nombres con espacios de más"],
+  ];
+  const cuenta = tipos.map(([clave, texto]) => {
+    const n = items.filter((i) => (clave ? i.problema.includes(clave) : !tipos.some(([c]) => c && i.problema.includes(c)))).length;
+    return n ? `<li><b>${n}</b> ${texto}</li>` : "";
+  });
+  const usados = E.datos.hallazgos.filter((h) => h.regla === "R27").length;
+  const efecto = usados
+    ? `En esta planilla, <b>${usados}</b> registro${usados === 1 ? "" : "s"} usa${usados === 1 ? "" : "n"} uno de los nombres repetidos: salen marcados con R27 para que confirmes la especie.`
+    : "En esta planilla no usaste ninguno de los nombres repetidos, así que no te afecta.";
+  return `<div class="alerta alerta-origen">
+    <div class="origen-titulo">Lista de especies de la plantilla («nombres BD»)</div>
+    <p class="tenue">Viene en la plantilla de XPE: no es un error de tu planilla, no resta puntaje y el auditor no la cambia. Tiene:</p>
+    <ul class="plantilla-lista">${cuenta.join("")}</ul>
+    <p>${efecto}</p>
+    <details><summary>Ver el detalle</summary><ul class="plantilla-detalle">
+      ${items.map((i) => `<li><code>${esc(i.celda || "")}</code> ${esc(i.problema)}</li>`).join("")}
+    </ul></details>
+  </div>`;
+}
+
 async function elegirOrigen(boton) {
   const grupo = boton.closest("[data-origen]").dataset.origen;
   const excluir = boton.dataset.excluir === "1";
@@ -370,6 +398,12 @@ function renderIndicadores() {
   if (d.aves) {
     filas.push(`<div class="indicador"><span>🐦</span><div><b>${fmt(d.aves.pct)}%</b> de los registros de aves en transecto
       fue entre ${esc(d.aves.rango)} (${d.aves.n_en_rango} de ${d.aves.n}).</div></div>`);
+  }
+  const presencias = Object.entries(d.presencias || {});
+  if (presencias.length) {
+    const lista = presencias.map(([e, ests]) => `${esc(e)} (${esc(ests.join(", "))})`).join("; ");
+    filas.push(`<div class="indicador"><span>👂</span><div>Registros de presencia «P»: <b>${lista}</b>.
+      Cuentan para la riqueza, no para abundancia ni densidad.</div></div>`);
   }
   if (d.sin_registros.length) {
     filas.push(`<div class="indicador"><span>📍</span><div>Estaciones sin registros: <b>${esc(d.sin_registros.join(", "))}</b>.
@@ -531,9 +565,19 @@ function tarjeta(h) {
     ${h.contexto ? `<div class="h-contexto">${esc(h.contexto)}</div>` : ""}
     ${h.valor ? `<div class="h-valor">Valor actual: <code>${esc(h.valor)}</code></div>` : ""}
     <div class="h-problema">${esc(h.problema)}</div>
+    ${h.comparacion ? tablaComparacion(h.comparacion) : ""}
     <div class="h-sugerencia">${esc(h.sugerencia)}</div>
     ${zonaDecision(h, d)}
   </article>`;
+}
+
+// Dos filas lado a lado (p. ej. un posible duplicado): solo las columnas que cambian
+function tablaComparacion([cabecera, ...filas]) {
+  const celdas = (fila, tag) => fila.map((v) => `<${tag}>${esc(v)}</${tag}>`).join("");
+  return `<div class="comparacion-tabla"><table>
+    <thead><tr>${celdas(cabecera, "th")}</tr></thead>
+    <tbody>${filas.map((f) => `<tr>${celdas(f, "td")}</tr>`).join("")}</tbody>
+  </table></div>`;
 }
 
 function zonaDecision(h, d) {
@@ -553,7 +597,11 @@ function zonaDecision(h, d) {
     }
     html += "</div>";
   }
-  const partes = h.acciones.map((a, i) => `<button class="btn-accion" data-accion="rapida" data-indice="${i}">${esc(a)}</button>`);
+  // Motivos de terreno habituales: un clic = «está bien así» con esa nota
+  const partes = (h.justificaciones || []).map(
+    (j, i) => `<button class="btn-accion btn-justificar" data-accion="justificar" data-indice="${i}">✓ ${esc(j)}</button>`
+  );
+  h.acciones.forEach((a, i) => partes.push(`<button class="btn-accion" data-accion="rapida" data-indice="${i}">${esc(a)}</button>`));
   if (h.editable) {
     if (partes.length) partes.push(`<span class="separador">o</span>`);
     if (h.opciones) {
@@ -566,7 +614,7 @@ function zonaDecision(h, d) {
       partes.push(`<input type="text" data-entrada placeholder="${placeholder(h)}" aria-label="Nuevo valor"${lista}${modo}>`);
     }
     partes.push(`<button class="btn-sec" data-accion="guardar">Guardar</button>`);
-  } else if (!h.acciones.length) {
+  } else if (!h.acciones.length && !(h.justificaciones || []).length) {
     const motivos = {
       sin_edicion: "No hace falta cambiar ningún valor: revísalo y, si está correcto, márcalo «Está bien así».",
       formula: "Es una celda con fórmula (columna naranja): corrige en Excel el dato del que depende.",
@@ -653,6 +701,7 @@ function alHacerClic(ev) {
   if (accion === "rapida") decidir(tarjeta, { tipo: "accion", indice: Number(b.dataset.indice) });
   else if (accion === "guardar") guardarValor(tarjeta);
   else if (accion === "ok") decidir(tarjeta, { tipo: "ok" });
+  else if (accion === "justificar") decidir(tarjeta, { tipo: "ok", nota: hallazgoDe(tarjeta).justificaciones[Number(b.dataset.indice)] });
   else if (accion === "deshacer") deshacer(tarjeta);
   else if (accion === "abrir") {
     E.abiertos.add(tarjeta.dataset.id);

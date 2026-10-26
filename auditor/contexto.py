@@ -14,9 +14,9 @@ from collections import defaultdict
 
 import pandas as pd
 
-from .hallazgos import REGLAS, Correccion, Hallazgo
+from .hallazgos import REGLAS, Correccion, Hallazgo, Severidad
 from .modelo import HOJA_BD, HOJA_TA, Libro, Tabla
-from .texto import a_fecha, a_hora, a_numero, clave, limpiar, mostrar
+from .texto import a_fecha, a_hora, a_numero, clave, es_presencia, limpiar, mostrar
 
 _NADA = object()
 COORDS = ["utm_e", "utm_s", "utm_e_ini", "utm_s_ini", "utm_e_fin", "utm_s_fin"]
@@ -157,6 +157,7 @@ class Contexto:
                     "fecha": a_fecha(t.valor(f, "fecha")),
                     "hora": a_hora(t.valor(f, "hora")),
                     "abundancia": a_numero(t.valor(f, "abundancia")),
+                    "presencia": es_presencia(t.valor(f, "abundancia")),
                     "metodologia": metodologia,
                     "tipo_registro": limpiar(tipo),
                     "dir_ind_calc": self._clasificar_tipo(tipo) if t.tiene("tipo_registro") else None,
@@ -178,7 +179,9 @@ class Contexto:
         self, id_regla: str, tabla: Tabla | str, fila: int | None, clave_col: str | None,
         problema: str, sugerencia: str, valor=_NADA, correccion=_NADA, celda: str | None = None,
         id_estacion: str | None = None, celdas_extra=(), acciones=(), opciones=None,
+        severidad: Severidad | None = None, justificaciones=(), comparacion=None,
     ) -> Hallazgo:
+        """severidad: para bajar (o subir) la de la regla en un caso concreto."""
         r = REGLAS[id_regla]
         if isinstance(tabla, Tabla):
             hoja = tabla.hoja
@@ -198,8 +201,9 @@ class Contexto:
             corr = Correccion(hoja, celda, fila, clave_col, correccion)
         return Hallazgo(
             id_regla=id_regla, hoja=hoja, celda=celda, fila=fila, id_estacion=id_estacion,
-            valor_actual=valor, problema=problema, sugerencia=sugerencia, severidad=r.severidad,
+            valor_actual=valor, problema=problema, sugerencia=sugerencia, severidad=severidad or r.severidad,
             correccion=corr, celdas_extra=list(celdas_extra), acciones=list(acciones),
-            opciones=list(opciones) if opciones else None,
+            opciones=list(opciones) if opciones else None, justificaciones=list(justificaciones),
+            comparacion=comparacion,
         )
 

@@ -89,13 +89,17 @@ def test_flujo_completo(servidor, tmp_path):
     for h in datos["hallazgos"]:
         por_regla.setdefault(h["regla"], []).append(h)
     r06, e02, r08 = por_regla["R06"][0], por_regla["E02"][0], por_regla["R08"][0]
-    assert r06["acciones"] == ["Poner 1"] and r06["editable"] and r06["tipo"] == "numero"
+    assert r06["acciones"] == ["Poner P (presencia)", "Poner 1"] and r06["editable"] and r06["tipo"] == "numero"
     assert not r08["editable"]  # una especie doméstica no se arregla escribiendo otro nombre
+    # la lista de especies de la plantilla (B01) va en un aviso aparte, no como tarjetas
+    assert "B01" not in por_regla and datos["plantilla"] and all("problema" in x for x in datos["plantilla"])
+    assert por_regla["R15"][0]["justificaciones"] == ["Son registros distintos"]
+    assert datos["presencias"] == {"Cururo": ["QV02"]}
     assert r06["contexto"].startswith("QV02")
 
     ruta = f"/api/sesiones/{id_}/decisiones"
     assert c.pedir("PUT", f"{ruta}/{r06['id']}", {"tipo": "valor", "texto": "muchos"})[0] == 400
-    estado, r = c.pedir("PUT", f"{ruta}/{r06['id']}", {"tipo": "accion", "indice": 0, "nota": "conteo mínimo"})
+    estado, r = c.pedir("PUT", f"{ruta}/{r06['id']}", {"tipo": "accion", "indice": 1, "nota": "conteo mínimo"})
     assert estado == 200 and r["decision"]["valor"] == "1"
     assert c.pedir("PUT", f"{ruta}/{e02['id']}", {"tipo": "valor", "texto": "Bosque nativo"})[0] == 200
     assert c.pedir("PUT", f"{ruta}/{r08['id']}", {"tipo": "ok"})[0] == 200
@@ -163,7 +167,7 @@ def test_retoma_las_decisiones_del_mismo_archivo(tmp_path):
         datos = datos["datos"]
         if vuelta == 0:
             r06 = next(h for h in datos["hallazgos"] if h["regla"] == "R06")
-            c.pedir("PUT", f"/api/sesiones/{r['id']}/decisiones/{r06['id']}", {"tipo": "accion", "indice": 0})
+            c.pedir("PUT", f"/api/sesiones/{r['id']}/decisiones/{r06['id']}", {"tipo": "accion", "indice": 1})
             c.pedir("POST", f"/api/sesiones/{r['id']}/origen", {"exoticas": True})
         else:
             assert datos["restauradas"] == 1 and len(datos["decisiones"]) == 1

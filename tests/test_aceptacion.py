@@ -35,7 +35,7 @@ def test_planilla_adjunta_detecta_todo_lo_que_contiene(resultado):
     ):
         assert estados[desc] == DETECTADO, desc
     # Lo que esta versión del archivo trae distinto a la revisión manual
-    assert estados["Cururo con abundancia «P» en PMF18 y PMF29"] == PARCIAL  # PMF18 vacío, no hay PMF29
+    assert estados["Cururo con abundancia «P» (presencia) en PMF18 y PMF29"] == PARCIAL  # PMF18 vacío, no hay PMF29
     assert estados["PMF35 con transecto de ~36 m y PMF55 con ~72 m"] == PARCIAL  # no hay PMF35
     for desc in (
         "PMF20 está en Registros pero no existe en Estaciones",

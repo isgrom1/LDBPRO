@@ -12,7 +12,7 @@ from .contexto import Contexto
 from .hallazgos import REGLAS, Hallazgo, Severidad
 from .modelo import Libro, tabla_mapeo
 from .motor import Cambio, Puntaje, formula_puntaje
-from .reglas.registros import es_domestica, es_exotica
+from .reglas.registros import RE_MARCA_DUPLICADO, es_domestica, es_exotica
 from .texto import clave, mostrar
 from .verificacion import Verificacion
 
@@ -59,7 +59,7 @@ def escribir_hallazgos_csv(
 
 COLUMNAS_BASE = [
     "estacion", "ambiente", "clase", "nombre_cientifico", "nombre_comun", "metodologia", "tipo_registro",
-    "abundancia", "fecha", "hora", "directo_indirecto", "usar_en_abundancia", "largo_transecto_m",
+    "abundancia", "tipo_abundancia", "fecha", "hora", "directo_indirecto", "usar_en_abundancia", "largo_transecto_m",
     "ancho_transecto_m", "area_muestreada_m2", "origen", "excluir_motivo", "hallazgos_pendientes", "hoja", "fila",
 ]
 
@@ -87,6 +87,10 @@ def filas_base_larga(libro: Libro, ctx: Contexto, hallazgos: list[Hallazgo], con
             motivos.append("estación no existe en Estaciones")
         if not u["especie"]:
             motivos.append("especie no está en nombres BD")
+        observaciones = t.valor(f, "observaciones") if t.tiene("observaciones") else None
+        duplicado = RE_MARCA_DUPLICADO.search(observaciones) if isinstance(observaciones, str) else None
+        if duplicado:
+            motivos.append(f"duplicado de la fila {duplicado.group(1)}")
         n = u["abundancia"]
         abundancia_ok = n is not None and n > 0 and float(n).is_integer()
         dir_ind = u["dir_ind_calc"]
@@ -103,6 +107,8 @@ def filas_base_larga(libro: Libro, ctx: Contexto, hallazgos: list[Hallazgo], con
             "metodologia": u["metodologia"],
             "tipo_registro": u["tipo_registro"],
             "abundancia": int(n) if abundancia_ok else "",
+            # conteo: entra a abundancia y densidad; presencia («P»): solo a riqueza y presencia/ausencia
+            "tipo_abundancia": "conteo" if abundancia_ok else "presencia" if u["presencia"] else "",
             "fecha": u["fecha"].isoformat() if isinstance(u["fecha"], date) else "",
             "hora": u["hora"].strftime("%H:%M") if u["hora"] else "",
             "directo_indirecto": dir_ind or "",
@@ -332,6 +338,13 @@ def escribir_reporte(
     for hoja, st in estadisticas.get("R11", {}).items():
         L.append(f"- **R11** ({hoja}): {st['pct']:.0f}% de los registros de aves en transecto ({st['n_en_rango']} de {st['n']}) "
                  f"fue entre {st['rango']}; {len(st['estaciones_mayoria'])} de {st['n_estaciones']} estaciones tienen la mayoría de sus registros de aves en ese horario.")
+    presencias = estadisticas.get("R26", {})
+    if presencias:
+        n = sum(1 for h in hallazgos_antes if h.id_regla == "R26")
+        detalle = "; ".join(f"{e} ({', '.join(sorted(ests, key=_orden_natural))})" for e, ests in sorted(presencias.items()))
+        L.append(f"- Registros de presencia («P», sin conteo de individuos): {n} — {detalle}. Cuentan para la riqueza y la "
+                 "presencia/ausencia, no para abundancia, densidad ni Shannon/Simpson; en las tablas de abundancia se "
+                 "escriben «P», como en la LdB de XPE (`tipo_abundancia = presencia` en base_limpia_larga.csv).")
     sin_registros = [h.id_estacion for h in hallazgos_despues if h.id_regla == "E12"]
     if sin_registros:
         L.append(f"- Estaciones sin registros (cuentan como 0, no se borran): {', '.join(sorted(sin_registros, key=_orden_natural))}.")
@@ -397,7 +410,8 @@ def escribir_reporte(
         f"(mín. {config['abundancia']['min_registros_especie']} registros) o el p{config['abundancia']['percentil']} con ≥ {config['abundancia']['min_registros_percentil']} registros.",
         f"- R09: el «grueso» de la campaña es el rango p5–p95 de las fechas; tolerancia {config['fechas']['tolerancia_dias']} días.",
         "- R15 compara estación, especie, fecha, hora y abundancia (requiere fecha y hora); se marca la repetición, no la primera fila.",
-        "- Reglas adicionales a la lista original: E14, E15, R21–R24, B01, T01, X01, X02 (ver descripción en la hoja RESUMEN).",
+        "- Reglas adicionales a la lista original: E14, E15, R21–R27, B01, T01, X01, X02 (ver descripción en la hoja RESUMEN).",
+        "- La abundancia «P» es presencia (como en las tablas de la LdB de XPE): entra a la riqueza, no a la abundancia.",
         "- `base_limpia_larga.csv` no borra filas: `excluir_motivo` dice por qué una fila no debe entrar al análisis y "
         "`usar_en_abundancia` = «no» marca evidencia indirecta o abundancia no válida (entra a riqueza, no a abundancia).",
     ]

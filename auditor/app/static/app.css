@@ -161,6 +161,15 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .origen-especie { background: var(--sup-2); border-radius: 99px; padding: 3px 10px; font-size: .88rem; }
 .origen-especie small { color: var(--tenue); }
 .origen-nota { font-size: .85rem; }
+.plantilla-lista { margin: 4px 0 6px; padding-left: 20px; }
+.plantilla-detalle { margin: 8px 0 0; padding-left: 18px; font-size: .85rem; color: var(--tenue); max-height: 260px; overflow: auto; }
+.alerta-origen details summary { cursor: pointer; color: var(--primario); font-size: .9rem; }
+.comparacion-tabla { overflow-x: auto; margin: 8px 0; }
+.comparacion-tabla table { border-collapse: collapse; font-size: .88rem; min-width: 100%; }
+.comparacion-tabla th, .comparacion-tabla td { border: 1px solid var(--borde); padding: 5px 9px; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+.comparacion-tabla th { background: var(--sup-2); font-weight: 600; }
+.comparacion-tabla td:first-child { color: var(--tenue); white-space: nowrap; }
+.btn-justificar { border-color: var(--primario); }
 
 /* ---------- progreso ---------- */
 .progreso { max-width: 520px; margin: 60px auto; text-align: center; padding: 34px; }

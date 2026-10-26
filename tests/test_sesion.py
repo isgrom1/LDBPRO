@@ -15,6 +15,7 @@ from auditor.sesion import (
     ErrorDecision,
     analizar,
     cambios_con_decisiones,
+    convertir_valor,
     generar,
     preparar_decision,
     proyectar,
@@ -36,7 +37,7 @@ def test_la_demo_muestra_errores_de_todas_las_familias(analisis):
     reglas = {h.id_regla for h in analisis.antes}
     esperadas = {"E02", "E03", "E04", "E05", "E07", "E08", "E09", "E11", "E12", "E13", "R01", "R02", "R03",
                  "R04", "R05", "R06", "R08", "R09", "R10", "R12", "R13", "R14", "R15", "R16", "R17", "R18",
-                 "R19", "R20", "R21", "R22", "R23", "R25", "B01", "T01"}
+                 "R19", "R20", "R21", "R22", "R23", "R25", "R26", "B01", "T01"}
     assert esperadas <= reglas, esperadas - reglas
     assert not [h for h in analisis.antes if h.id_regla == "ERROR"]
     assert analisis.puntaje_despues.indice > analisis.puntaje_antes.indice
@@ -49,8 +50,51 @@ def test_horarios_y_origen(analisis):
     assert conejo.valor_actual == "Conejo" and conejo.id_estacion == "QV01"
 
 
+def test_presencia_duplicados_y_motivos_de_terreno(analisis, tmp_path):
+    # «P» es presencia: aviso, no error; «varios» sí es error y ofrece P o 1
+    r26 = buscar(analisis, "R26")
+    assert r26.severidad.nivel == 1 and r26.valor_actual == "P" and r26.correccion is None
+    assert convertir_valor("abundancia", " presencia ") == "P"
+    # filas idénticas: advertencia, con botón para marcar el duplicado en Observaciones
+    r15 = buscar(analisis, "R15")
+    assert r15.severidad.nivel == 2 and r15.justificaciones == ["Son registros distintos"]
+    assert r15.acciones[0].etiqueta == "Es el mismo: marcar como duplicado"
+    primera = int(r15.problema.split("Fila idéntica a la ")[1].split(":")[0])
+    assert r15.acciones[0].valor == f"[DUPLICADO de la fila {primera}]"
+    r07 = buscar(analisis, "R07")
+    assert r07.valor_actual == 40 and r07.justificaciones == ["Conteo real (bandada)"]
+
+    decisiones = {r15.clave(): preparar_decision(analisis, r15, {"tipo": "accion", "indice": 0})}
+    r = generar(analisis, tmp_path, decisiones, con_libreoffice=False, informar=lambda *a: None)
+    assert r.verificacion.todo_ok
+    assert not [h for h in r.hallazgos_despues if h.id_regla == "R15" and h.celda == r15.celda]
+    filas = list(csv.DictReader(r.archivos["base"].read_text(encoding="utf-8").splitlines()))
+    cururo = next(f for f in filas if f["nombre_comun"] == "Cururo")
+    assert (cururo["abundancia"], cururo["tipo_abundancia"], cururo["usar_en_abundancia"]) == ("", "presencia", "no")
+    assert cururo["excluir_motivo"] == ""  # entra a la riqueza
+    duplicada = next(f for f in filas if f["fila"] == str(r15.fila))
+    assert duplicada["excluir_motivo"] == f"duplicado de la fila {primera}"
+    assert "Registros de presencia («P»" in r.archivos["reporte"].read_text(encoding="utf-8")
+
+
+def test_nombre_comun_con_dos_especies(tmp_path):
+    ruta = crear_planilla_demo(tmp_path / "p.xlsx")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        wb = openpyxl.load_workbook(ruta)
+    bd = wb["nombres BD"]
+    bd.append(["Chincol", "Zonotrichia otra", "Animalia", "Chordata", "Aves", "Passeriformes", "Passerellidae", "Zonotrichia"])
+    wb.save(ruta)
+    a = analizar(ruta, cargar_config(), tmp_path, informar=lambda *x: None)
+    b01 = [h for h in a.antes if h.id_regla == "B01" and "Chincol" in h.problema]
+    assert len(b01) == 1 and "completa la primera (Zonotrichia capensis)" in b01[0].problema
+    r27 = [h for h in a.antes if h.id_regla == "R27"]
+    assert r27 and all("Zonotrichia otra" in h.problema for h in r27)
+    assert r27[0].justificaciones == ["Es Zonotrichia capensis"]
+
+
 def test_acciones_sugeridas(analisis):
-    assert [a.etiqueta for a in buscar(analisis, "R06").acciones] == ["Poner 1"]
+    assert [a.etiqueta for a in buscar(analisis, "R06").acciones] == ["Poner P (presencia)", "Poner 1"]
     assert buscar(analisis, "E03", "F6").acciones[0].valor == "Matorral esclerófilo"
     r20 = buscar(analisis, "R20")
     assert (r20.acciones[0].hoja, r20.acciones[0].valor) == ("Estaciones", 1)
@@ -78,7 +122,7 @@ def test_decisiones_cambian_los_cambios(analisis):
     decisiones = {
         r03.clave(): preparar_decision(analisis, r03, {"tipo": "sin_auto"}),
         r20.clave(): preparar_decision(analisis, r20, {"tipo": "accion", "indice": 0}),
-        buscar(analisis, "R06").clave(): preparar_decision(analisis, buscar(analisis, "R06"), {"tipo": "accion", "indice": 0}),
+        buscar(analisis, "R06").clave(): preparar_decision(analisis, buscar(analisis, "R06"), {"tipo": "accion", "indice": 1}),
     }
     cambios, resueltos = cambios_con_decisiones(analisis, decisiones)
     celdas = {(c.hoja, c.celda): c for c in cambios}

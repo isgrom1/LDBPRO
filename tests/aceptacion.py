@@ -82,8 +82,11 @@ def item_cururo(res):
                 partes.append(f"{est}: abundancia {mostrar(v)} (válida)")
                 estados.append(AUSENTE)
                 continue
-            ok = bool(_hs(res, "R06", hoja=t.hoja, celda=t.celda(f, "abundancia")))
-            partes.append(f"{est} {t.celda(f, 'abundancia')}: «{mostrar(v)}»")
+            # «P» es presencia (convención de la LdB de XPE): se informa con R26, no es error.
+            # Vacía o cualquier otro texto sigue siendo R06.
+            regla = "R26" if v == "P" else "R06"
+            ok = bool(_hs(res, regla, hoja=t.hoja, celda=t.celda(f, "abundancia")))
+            partes.append(f"{est} {t.celda(f, 'abundancia')}: «{mostrar(v)}» ({regla})")
             estados.append(FALLA if not ok else DETECTADO if v == "P" else PARCIAL)
     if FALLA in estados:
         return FALLA, "; ".join(partes)
@@ -215,7 +218,7 @@ def _contexto(res) -> Contexto:
 ESPERADOS = [
     ("PMF20 está en Registros pero no existe en Estaciones", "R01", item_pmf20),
     ("Rhinella spp. no está en nombres BD y da #N/A", "R02/R04", item_rhinella),
-    ("Cururo con abundancia «P» en PMF18 y PMF29", "R06", item_cururo),
+    ("Cururo con abundancia «P» (presencia) en PMF18 y PMF29", "R26", item_cururo),
     ("«lagartija lemniscata» en minúscula vs «Lagartija lemniscata»", "R03/R05", item_lemniscata),
     ("«Cometocino de gay» y «Lagarto de zapallar» difieren solo en mayúsculas", "R03", item_mayusculas),
     ("Coordenadas con U+00A0 en PMF38, PMF40 y PMF55", "E05", item_nbsp),

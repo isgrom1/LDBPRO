@@ -6,7 +6,7 @@ import difflib
 import re
 
 from ..contexto import texto_id
-from ..hallazgos import Accion, Severidad, regla
+from ..hallazgos import Severidad, regla
 from ..modelo import HOJA_BD, HOJA_ESTACIONES, Libro
 from ..texto import (
     a_numero,
@@ -25,8 +25,9 @@ _INDEX_MATCH = re.compile(
 )
 
 
-@regla("B01", "Diccionario nombres BD con entradas problemáticas", INFO)
+@regla("B01", "Lista de especies de la plantilla (nombres BD) con entradas problemáticas", INFO)
 def b01(ctx):
+    """La hoja «nombres BD» viene en la plantilla de XPE: solo se avisa, no se corrige."""
     bd = ctx.bd
     for f in bd.filas_datos:
         nombre = bd.valor(f, "nombre_comun")
@@ -34,9 +35,9 @@ def b01(ctx):
         if espacios:
             yield ctx.hallazgo(
                 "B01", bd, f, "nombre_comun",
-                f"Nombre común con {', '.join(espacios)}: quien lo escriba sin ese espacio obtiene #N/A en Excel.",
-                f"Corrige el nombre a '{limpiar(nombre)}' en nombres BD.",
-                acciones=[Accion(f"Usar «{limpiar(nombre)}»", limpiar(nombre))],
+                f"«{limpiar(nombre)}» tiene {', '.join(espacios)} en nombres BD: si en Registros se escribe "
+                "sin ese espacio, la planilla da #N/A.",
+                "No es un error de tu planilla: el auditor une los nombres ignorando esos espacios.",
             )
         if bd.tiene("clase"):
             c = limpiar(bd.valor(f, "clase"))
@@ -44,20 +45,39 @@ def b01(ctx):
             if c and normal != c:
                 yield ctx.hallazgo(
                     "B01", bd, f, "clase",
-                    f"Clase '{c}' en vez de '{normal}': al agrupar por clase quedan dos grupos.",
-                    f"Usa '{normal}' (como el resto del diccionario).",
-                    acciones=[Accion(f"Usar «{normal}»", normal)],
+                    f"La clase de «{limpiar(nombre)}» está como «{c}» en vez de «{normal}» en nombres BD.",
+                    f"No es un error de tu planilla: el auditor la cuenta como {normal} al agrupar por clase.",
                 )
     for filas in ctx.bd_clave.values():
         especies = {clave(ctx.cientifico_bd(f)) for f in filas}
         if len(filas) > 1 and len(especies) > 1:
-            for f in filas[1:]:
-                yield ctx.hallazgo(
-                    "B01", bd, f, "nombre_comun",
-                    f"El nombre común '{limpiar(bd.valor(f, 'nombre_comun'))}' se repite en las filas "
-                    f"{', '.join(map(str, filas))} con especies distintas; el MATCH de Excel toma siempre la primera ({filas[0]}).",
-                    "Deja un nombre común único por especie.",
-                )
+            nombre = limpiar(bd.valor(filas[0], "nombre_comun"))
+            detalle = "; ".join(f"fila {f}: {ctx.cientifico_bd(f) or '(sin nombre científico)'}" for f in filas)
+            yield ctx.hallazgo(
+                "B01", bd, filas[1], "nombre_comun",
+                f"«{nombre}» aparece {len(filas)} veces en nombres BD con especies distintas ({detalle}). Al "
+                f"escribir «{nombre}» en Registros, la planilla siempre completa la primera "
+                f"({ctx.cientifico_bd(filas[0])}).",
+                "No es un error de tu planilla. Solo importa si registraste otra de esas especies (lo marca R27).",
+                celdas_extra=[bd.celda(f, "nombre_comun") for f in filas if f != filas[1]],
+            )
+
+
+@regla("R27", "Nombre común con varias especies en nombres BD", INFO)
+def r27(ctx):
+    for t, f, u in ctx.iter_registros():
+        filas = ctx.bd_clave.get(clave(u["nombre"]), [])
+        especies = {clave(ctx.cientifico_bd(g)) for g in filas}
+        if len(filas) < 2 or len(especies) < 2 or not u["especie"]:
+            continue
+        otras = sorted({ctx.cientifico_bd(g) for g in filas} - {u["especie"]})
+        yield ctx.hallazgo(
+            "R27", t, f, "nombre_comun",
+            f"«{u['nombre']}» corresponde a {len(especies)} especies en nombres BD; la planilla completó "
+            f"{u['especie']} (la primera). Las otras: {', '.join(otras)}.",
+            "Confirma que sea esa especie. Si era otra, la plantilla no permite elegirla: avísale a XPE.",
+            justificaciones=[f"Es {u['especie']}"],
+        )
 
 
 @regla("T01", "Plantilla: una fórmula y su lista de validación no coinciden", INFO, auto_corregible=True)

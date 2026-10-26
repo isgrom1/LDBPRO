@@ -62,7 +62,13 @@ def test_registros(resultado):
     assert celdas(resultado, "R06") == ["AI196"]  # Cururo PMF18 sin abundancia
     assert celdas(resultado, "R08") == ["AD198"]  # Equus caballus PMF17
     assert celdas(resultado, "R10") == ["Z124", "Z196"]
-    assert "AD173" in celdas(resultado, "R15")  # Cometocino de gay repetido
+    # Macho y hembra en la misma estación y hora son dos individuos, no un duplicado (filas 172/173)
+    assert "AD173" not in celdas(resultado, "R15")
+    r15 = {h.celda: h for h in hallazgos(resultado, "R15")}
+    assert set(r15) == {"AD99", "AD195"}  # solo cambia el comportamiento / visto y oído
+    assert r15["AD99"].severidad == Severidad.INFO
+    assert r15["AD99"].comparacion == [("", "Fila 98", "Fila 99"), ("Comportamiento", "Volando", "Posado")]
+    assert "oído y visto" in r15["AD195"].problema
     assert celdas(resultado, "R17") == ["AK10", "AK11", "AL13"]
     assert "AK51" in celdas(resultado, "R18")  # 'TC_01812-TC_01813'
     assert celdas(resultado, "R20") == ["AA124"]  # cámara trampa no marcada en PMF37

@@ -126,7 +126,7 @@ REGISTROS = [
     ("QV01", 0, time(7, 52), "Transecto", "Individuo", "Cometocino de gay", 3, "Alimentándose", None, None, None),
     ("QV01", 0, time(7, 52), "Transecto", "Individuo", "Cometocino de gay", 3, "Alimentándose", None, None, None),
     ("QV01", 0, time(8, 5), "Transecto", "Individuo", "lagartija lemniscata", 1, "Escondido", None, None, (300110, 6350090)),
-    ("QV02", 0, time(8, 30), "Transecto", "Vocalización", "Tenca", 1, None, None, None, None),
+    ("QV02", 0, time(8, 30), "Transecto", "Vocalización", "Tenca", "varios", None, None, None, None),
     ("QV02", 0, time(8, 41), "Transecto", "Individuo", "Lagartija lemniscata", 1, "Posado", "TC_00012-TC_00013", None, (300480, 6350160)),
     ("QV02", 0, time(8, 50), "Transecto", "Vocalización", "Cururo", "P", None, None, None, None),
     ("QV02", 0, time(9, 2), "Transecto", "Individuo", "Perro", 2, "Corriendo", None, None, None),

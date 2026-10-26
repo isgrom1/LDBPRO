@@ -81,6 +81,10 @@ class Hallazgo:
     acciones: list[Accion] = field(default_factory=list)
     # Valores permitidos para la celda (listas de 'validación datos'), para elegir de una lista
     opciones: list[str] | None = None
+    # Motivos de terreno frecuentes: un clic los deja como «está bien así» con esa nota
+    justificaciones: list[str] = field(default_factory=list)
+    # Filas comparadas lado a lado (p. ej. un posible duplicado): [(columna, valor A, valor B)]
+    comparacion: list[tuple[str, str, str]] | None = None
 
     @property
     def auto_corregible(self) -> bool:

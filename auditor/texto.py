@@ -40,6 +40,15 @@ def clave(v) -> str:
     return limpiar(v).casefold()
 
 
+# Abundancia «P»: especie presente sin conteo de individuos (convención de las tablas de la LdB de XPE)
+PRESENCIA = "P"
+_PRESENCIA = {"p", "p.", "presencia", "presente", "pres", "pres."}
+
+
+def es_presencia(v) -> bool:
+    return isinstance(v, str) and clave(v) in _PRESENCIA
+
+
 def sin_tildes(s: str) -> str:
     return "".join(c for c in unicodedata.normalize("NFD", s) if unicodedata.category(c) != "Mn")
 

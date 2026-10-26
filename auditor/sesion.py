@@ -33,9 +33,11 @@ from .reportes import (
 )
 from .revision import escribir_revision
 from .texto import (
+    PRESENCIA,
     a_fecha,
     a_hora,
     a_numero,
+    es_presencia,
     fecha_a_excel,
     hora_a_excel,
     limpiar,
@@ -200,10 +202,12 @@ def convertir_valor(clave: str, texto) -> object:
     if not isinstance(texto, str):
         return texto
     tipo = tipo_de_columna(clave)
+    if clave == "abundancia" and es_presencia(texto):
+        return PRESENCIA
     if tipo == "numero":
         n = a_numero(texto)
         if n is None:
-            raise ErrorDecision(f"«{texto}» no es un número")
+            raise ErrorDecision(f"«{texto}» no es un número" + (" (o «P» para presencia)" if clave == "abundancia" else ""))
         return numero_para_celda(n)
     if tipo == "fecha":
         d = a_fecha(texto)
