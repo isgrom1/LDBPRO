@@ -74,10 +74,14 @@ exoticas:
 
 aves:
   clase: Aves
-  # R11: horario de baja actividad de aves (registros en transecto)
+  # R11 (solo indicador): % de registros de aves en transecto en este horario de baja actividad
   horario_baja_actividad: ["12:00", "17:00"]
-  # R11 se reporta como hallazgo si el % en ese horario supera este umbral
-  umbral_pct: 50
+
+abundancia:
+  # R07: no marca conteos bajo este número
+  min_atipica: 10
+  # R07 no revisa las aves de estos órdenes, que andan en bandadas (30 chincoles es normal)
+  ordenes_gregarios: [Passeriformes, Columbiformes, Psittaciformes, Anseriformes, Charadriiformes, Gruiformes, Pelecaniformes, Suliformes, Procellariiformes, Procellariformes, Sphenisciformes, Podicipediformes, Phoenicopteriformes, Cathartiformes, Galliformes, Rheiformes]
 
 horarios:
   # R12: los playback (aves y anfibios) se hacen de noche; solo se marca uno hecho

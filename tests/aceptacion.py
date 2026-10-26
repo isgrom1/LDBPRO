@@ -197,8 +197,8 @@ def item_aves(res):
         return AUSENTE, "sin registros de aves en transecto"
     if st["pct"] <= 50:
         return AUSENTE, f"solo {st['pct']:.0f}% entre {st['rango']}"
-    ok = bool(_hs(res, "R11"))
-    return (DETECTADO if ok else FALLA), f"R11: {st['pct']:.0f}% ({st['n_en_rango']}/{st['n']}) entre {st['rango']}"
+    # R11 es solo un indicador (no genera hallazgos): basta con que se calcule y se informe
+    return DETECTADO, f"indicador R11: {st['pct']:.0f}% ({st['n_en_rango']}/{st['n']}) entre {st['rango']}"
 
 
 _CONTEXTOS: dict[int, Contexto] = {}

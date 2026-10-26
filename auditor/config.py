@@ -55,7 +55,7 @@ POR_DEFECTO: dict = {
         ],
         "excluir_del_analisis": False,
     },
-    "aves": {"clase": "Aves", "horario_baja_actividad": ["12:00", "17:00"], "umbral_pct": 50},
+    "aves": {"clase": "Aves", "horario_baja_actividad": ["12:00", "17:00"]},
     "horarios": {
         # R12: los playback se hacen de noche; solo se marca uno hecho claramente de día
         "nocturno": ["18:00", "07:00"],
@@ -68,6 +68,13 @@ POR_DEFECTO: dict = {
     "abundancia": {
         # R07 no marca conteos bajo este número: 6 perdices o 9 chincoles no son raros
         "min_atipica": 10,
+        # Órdenes de aves que andan en bandadas: R07 no los marca (30 chincoles o 100 tórtolas son normales).
+        # Se sigue revisando el resto (rapaces, picaflores, carpinteros…), mamíferos, reptiles y anfibios.
+        "ordenes_gregarios": [
+            "Passeriformes", "Columbiformes", "Psittaciformes", "Anseriformes", "Charadriiformes", "Gruiformes",
+            "Pelecaniformes", "Suliformes", "Procellariiformes", "Procellariformes", "Sphenisciformes",
+            "Podicipediformes", "Phoenicopteriformes", "Cathartiformes", "Galliformes", "Rheiformes",
+        ],
         # R07: atípica si > Q3 + factor_iqr × max(IQR, 1), o > p99 cuando hay suficientes datos
         "min_registros_especie": 5,
         "factor_iqr": 3,

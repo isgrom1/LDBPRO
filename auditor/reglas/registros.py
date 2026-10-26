@@ -285,11 +285,16 @@ def r26(ctx):
 @regla("R07", "Abundancia atípica para la especie", INFO)
 def r07(ctx):
     cfg = ctx.config["abundancia"]
+    gregarios = {clave(x) for x in cfg.get("ordenes_gregarios", [])}
     por_especie = defaultdict(list)
     for t, f, u in ctx.iter_registros():
         n = u["abundancia"]
-        if u["especie"] and n is not None and n > 0:
-            por_especie[u["especie"]].append((t, f, n))
+        if not u["especie"] or n is None or n <= 0:
+            continue
+        g = u["bd_fila_flex"]
+        if g is not None and ctx.bd.tiene("orden") and clave(ctx.bd.valor(g, "orden")) in gregarios:
+            continue  # aves de bandada: un conteo alto es lo normal
+        por_especie[u["especie"]].append((t, f, n))
     for especie, items in por_especie.items():
         if len(items) < cfg["min_registros_especie"]:
             continue
@@ -305,10 +310,10 @@ def r07(ctx):
                     "R07", t, f, "abundancia",
                     f"Abundancia {mostrar(n)} alta para {especie}: en esta planilla la mediana es "
                     f"{mostrar(mediana)} y lo habitual llega a {limite:.0f} ({len(valores)} registros).",
-                    "Si fue una bandada, está bien y no causa problemas en los análisis: solo pesa más en la "
+                    "Si el conteo es real, está bien y no causa problemas en los análisis: solo pesa más en la "
                     "abundancia relativa y la dominancia, que es lo real. Solo revisa que no sea un error de "
                     "tipeo (p. ej. 30 por 3).",
-                    justificaciones=["Conteo real (bandada)"],
+                    justificaciones=["Conteo real"],
                 )
 
 
@@ -410,8 +415,9 @@ def r10(ctx):
             yield ctx.hallazgo("R10", t, f, "hora", f"Hora no válida: '{mostrar(v)}'.", "Escribe la hora como hh:mm.")
 
 
-@regla("R11", "Aves en transecto fuera del horario de mayor actividad", INFO)
+@regla("R11", "Aves en transecto fuera del horario de mayor actividad (indicador)", INFO)
 def r11(ctx):
+    """Solo calcula el indicador (pantalla, informe y RESUMEN): no es un problema de la planilla."""
     cfg = ctx.config["aves"]
     ini, fin = (hora_desde_texto(x) for x in cfg["horario_baja_actividad"])
     transecto = clave(ctx.config["horarios"]["metodologia_transecto"])
@@ -434,20 +440,6 @@ def r11(ctx):
             "rango": f"{ini:%H:%M}–{fin:%H:%M}", "estaciones_mayoria": mayoria,
             "n_estaciones": len(por_est),
         }
-        if pct < cfg["umbral_pct"]:
-            continue
-        yield ctx.hallazgo(
-            "R11", t, None, None,
-            f"El {pct:.0f}% de los registros de aves en transecto ({int(en_rango.sum())} de {len(con_hora)}) "
-            f"se hizo entre {ini:%H:%M} y {fin:%H:%M}, horario de baja actividad de aves. Estaciones con "
-            f"la mayoría de sus registros de aves en ese horario ({len(mayoria)} de {len(por_est)}): {', '.join(mayoria)}.",
-            "No es un error de la planilla ni hay que cambiar nada. Al mediodía las aves se mueven y cantan "
-            "menos, así que se detectan menos: la riqueza y las abundancias de esas estaciones pueden salir "
-            "algo más bajas que en la mañana. Basta con mencionarlo en el informe (horario de muestreo por "
-            "la logística de terreno).",
-            celda=f"{t.columnas['hora']}{t.fila_encabezado}", valor=f"{pct:.0f}%",
-            justificaciones=["Horario por logística de terreno"],
-        )
 
 
 @regla("R12", "Hora incoherente con la metodología", ADV)

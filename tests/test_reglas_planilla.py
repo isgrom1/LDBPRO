@@ -74,7 +74,8 @@ def test_registros(resultado):
     assert celdas(resultado, "R20") == ["AA124"]  # cámara trampa no marcada en PMF37
     assert celdas(resultado, "R23") == ["AL121"]  # 'En sherman' en un registro de transecto
     r11 = hallazgos(resultado, "R11")
-    assert len(r11) == 1 and resultado.estadisticas["R11"]["Registros"]["pct"] > 80
+    assert r11 == [] and resultado.estadisticas["R11"]["Registros"]["pct"] > 80  # solo indicador
+    assert hallazgos(resultado, "R07") == []  # 12 chincoles: paseriforme, ave de bandada
     for regla in ("R01", "R09", "R12", "R13", "R14", "R16", "R19", "R24", "X01", "X02"):
         assert not hallazgos(resultado, regla), regla
 

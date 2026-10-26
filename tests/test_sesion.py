@@ -61,8 +61,13 @@ def test_presencia_duplicados_y_motivos_de_terreno(analisis, tmp_path):
     assert r15.acciones[0].etiqueta == "Es el mismo: marcar como duplicado"
     primera = int(r15.problema.split("Fila idéntica a la ")[1].split(":")[0])
     assert r15.acciones[0].valor == f"[DUPLICADO de la fila {primera}]"
-    r07 = buscar(analisis, "R07")
-    assert r07.valor_actual == 40 and r07.justificaciones == ["Conteo real (bandada)"]
+    # 40 chincoles: paseriforme, ave de bandada → R07 no lo marca; sin esa excepción, sí
+    assert not [h for h in analisis.antes if h.id_regla == "R07"]
+    cfg = cargar_config()
+    cfg["abundancia"]["ordenes_gregarios"] = []
+    sin_excepcion = analizar(analisis.ruta, cfg, tmp_path / "sin_excepcion", informar=lambda *a: None)
+    r07 = next(h for h in sin_excepcion.antes if h.id_regla == "R07")
+    assert r07.valor_actual == 40 and r07.justificaciones == ["Conteo real"]
 
     decisiones = {r15.clave(): preparar_decision(analisis, r15, {"tipo": "accion", "indice": 0})}
     r = generar(analisis, tmp_path, decisiones, con_libreoffice=False, informar=lambda *a: None)
@@ -110,8 +115,8 @@ def test_decisiones_validas_e_invalidas(analisis):
         preparar_decision(analisis, r06, {"tipo": "valor", "texto": "muchos"})
     with pytest.raises(ErrorDecision, match="fórmula"):
         preparar_decision(analisis, r06, {"tipo": "valor", "texto": "x", "hoja": "Registros", "celda": "AE10"})
-    with pytest.raises(ErrorDecision):
-        preparar_decision(analisis, buscar(analisis, "R11"), {"tipo": "valor", "texto": "1"})
+    with pytest.raises(ErrorDecision, match="no es una celda de datos"):
+        preparar_decision(analisis, r06, {"tipo": "valor", "texto": "1", "hoja": "Registros", "celda": "AI1"})
     fecha = preparar_decision(analisis, buscar(analisis, "R09"), {"tipo": "valor", "texto": "16-10-2026"})
     assert fecha.valor == 46311
 

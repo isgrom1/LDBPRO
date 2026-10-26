@@ -116,11 +116,11 @@ muestra el puntaje *proyectado* tras las auto-correcciones.
 | R04 | Nombre genérico (sp./spp.) | 🟠 | No |
 | R05 | Mismo nombre científico escrito con distintos nombres comunes | 🟠 | Sí |
 | R06 | Abundancia vacía, no numérica, ≤0 o decimal (la «P» de presencia no es error: R26) | 🔴 | No |
-| R07 | Abundancia alta para la especie (solo desde 10 individuos; si fue una bandada, está bien) | 🟡 | No |
+| R07 | Abundancia alta para la especie (desde 10 individuos; no revisa aves de bandada: paseriformes, tórtolas, patos, playeros, jotes…) | 🟡 | No |
 | R08 | Especie doméstica | 🟡 | No |
 | R09 | Fecha vacía o fuera del rango de la campaña | 🟠 | No |
 | R10 | Hora vacía | 🟠 | No |
-| R11 | Aves en transecto fuera del horario de mayor actividad (indicador; no es error) | 🟡 | No |
+| R11 | % de registros de aves en transecto entre 12 y 17 h: solo un indicador (pantalla, informe y RESUMEN), no aparece como problema | — | No |
 | R12 | Playback (aves o anfibios) hecho claramente de día, o cámara trampa a las 00:00 exactas | 🟠 | No |
 | R13 | Metodología o tipo de registro fuera de la lista de validación | 🟠 | No |
 | R14 | Directo/Indirecto incoherente con el tipo de registro | 🟠 | No |
@@ -159,9 +159,8 @@ listas.
 ⁴ Solo unifica variantes («p», «Presencia», «presente») a «P».
 
 **Motivos de terreno.** Varios avisos traen un botón con el motivo habitual («No se pudo recorrer
-completo», «No se pudo llegar al punto», «Son registros distintos», «Conteo real (bandada)»,
-«Horario por logística de terreno»): un clic lo deja como «está bien así» con esa nota, que
-queda en el informe. En un duplicado, «Es el mismo» anota `[DUPLICADO de la fila N]` en
+completo», «No se pudo llegar al punto», «Son registros distintos», «Conteo real»): un clic lo
+deja como «está bien así» con esa nota, que queda en el informe. En un duplicado, «Es el mismo» anota `[DUPLICADO de la fila N]` en
 Observaciones (para borrar la fila antes de entregar) y lo saca de `base_limpia_larga.csv`.
 
 **Abundancia «P».** La LdB de XPE usa «P: Presencia» en sus tablas de abundancia para especies
