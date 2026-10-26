@@ -4,13 +4,13 @@
 
 @font-face {
   font-family: "JetBrains Mono";
-  src: url("/static/jetbrains-mono-400.woff2") format("woff2");
+  src: url("jetbrains-mono-400.woff2") format("woff2");
   font-weight: 400;
   font-display: swap;
 }
 @font-face {
   font-family: "JetBrains Mono";
-  src: url("/static/jetbrains-mono-600.woff2") format("woff2");
+  src: url("jetbrains-mono-600.woff2") format("woff2");
   font-weight: 600 800;
   font-display: swap;
 }
@@ -77,6 +77,8 @@ p { margin: 0 0 .6em; }
 strong, b { font-weight: 600; }
 code, .mono { font-family: var(--mono); font-size: .86em; }
 [hidden] { display: none !important; }
+body.web .solo-escritorio { display: none !important; }
+body:not(.web) .solo-web { display: none !important; }
 .tenue { color: var(--tenue); }
 .centrado { text-align: center; }
 
@@ -254,6 +256,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .zona-titulo { font-family: var(--display); font-size: 1.4rem; font-weight: 600; }
 .zona-sub { color: var(--tenue); }
 .zona-formatos { display: flex; gap: 6px; margin-top: 10px; }
+.zona-nota { margin-top: 10px; color: var(--tenue); font-size: 12px; }
 .zona-formatos span {
   font-family: var(--mono); font-size: .74rem; color: var(--tenue);
   padding: 2px 9px; border-radius: 99px; border: 1px solid var(--borde);

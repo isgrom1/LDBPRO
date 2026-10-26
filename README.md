@@ -39,6 +39,34 @@ Ejecutar de todas formas*.
 `pyinstaller --noconfirm --clean empaquetado/AuditorXPE.spec` → `dist\AuditorXPE.exe`.
 Sin compilar: `python AuditorXPE.py`.
 
+## Versión web (un link, sin instalar nada)
+
+Para un computador donde no se puede abrir un .exe (por ejemplo, el de una empresa):
+**https://isgrom1.github.io/LDBPRO/**. Es la misma interfaz y el mismo código Python del
+programa de escritorio, que corre dentro del navegador con [Pyodide](https://pyodide.org)
+(Python en WebAssembly). **La planilla no se sube a ninguna parte**: se lee y se corrige en el
+navegador, y los resultados se descargan desde ahí mismo.
+
+- La primera vez descarga unos 21 MB (Python, pandas, lxml) desde `cdn.jsdelivr.net`; después
+  queda en la caché del navegador. openpyxl va junto a la página, en `web/paquetes/`.
+- Las revisiones quedan guardadas en ese navegador (IndexedDB), así que se retoman igual que en
+  el programa de escritorio. Si se borran los datos del sitio, se pierden.
+- Diferencias con el .exe: no abre los archivos ni la carpeta (se descargan uno a uno o en un
+  .zip), y los `.xlsb` hay que guardarlos antes como `.xlsx` desde Excel (no hay LibreOffice).
+- Funciona en Edge o Chrome actuales. El análisis de una planilla real toma unos segundos más que
+  en el .exe.
+
+**Publicarla** (una sola vez): en GitHub, *Settings → Pages → Build and deployment → Source:
+Deploy from a branch*, elegir la rama y la carpeta `/ (root)` y guardar. Cada `git push` a esa
+rama actualiza el sitio en un par de minutos.
+
+La página `web/index.html` y la lista `web/manifiesto.json` (los archivos `.py` que carga el
+navegador) se generan desde `auditor/app/static/index.html` y el código: después de cambiar la
+interfaz o agregar un módulo, corre `python empaquetado/construir_web.py` (las pruebas fallan si
+quedaron desactualizadas). El puente entre la interfaz y Python está en `web/motor.js` (página) y
+`web/trabajador.js` (Web Worker); el despacho de rutas es el mismo `atender()` del servidor local
+(`auditor/app/servidor.py`), y `auditor/app/web.py` lo expone al navegador.
+
 ## Línea de comandos
 
 ```

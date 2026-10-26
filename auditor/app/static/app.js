@@ -36,8 +36,12 @@ const E = {
   temporizador: null,
 };
 
+// Versión web (web/motor.js): el motor corre en el navegador y no hay servidor local
+const WEB = window.MotorWeb || null;
+
 // ------------------------------------------------------------------ utilidades
 async function api(metodo, ruta, cuerpo) {
+  if (WEB) return WEB.pedir(metodo, ruta, cuerpo);
   const opciones = { method: metodo, headers: { "X-Auditor": "1" } };
   if (cuerpo instanceof Blob) {
     opciones.body = cuerpo;
@@ -89,6 +93,11 @@ function claseEstado(estado) {
 async function cargarInfo() {
   try {
     const info = await api("GET", "/api/info");
+    if (info.web) {
+      $("#pie-info").innerHTML = `Las revisiones quedan guardadas en este navegador; la planilla no se sube a internet.
+        <span class="version">· v${esc(info.version)}</span>`;
+      return;
+    }
     $("#pie-info").innerHTML = `Los resultados se guardan en <code>${esc(info.carpeta)}</code>
       <button class="enlace" id="btn-carpeta-base">Abrir carpeta</button> <span class="version">· v${esc(info.version)}</span>`;
     $("#btn-carpeta-base").addEventListener("click", () => api("POST", "/api/abrir-carpeta").catch((e) => aviso(e.message, true)));
@@ -101,6 +110,7 @@ async function cargarInfo() {
 // Los botones se conectan antes de cualquier consulta al servidor: si la primera tarda,
 // la interfaz igual responde.
 function iniciar() {
+  document.body.classList.toggle("web", !!WEB);
   mostrarVista("inicio");
   const zona = $("#zona-carga");
   $("#archivo").addEventListener("change", (ev) => ev.target.files[0] && subir(ev.target.files[0]));
@@ -298,6 +308,11 @@ function mostrarProgreso(nombre) {
 async function subir(archivo) {
   if (!/\.(xlsx|xlsb|xls|xlsm)$/i.test(archivo.name)) {
     volverAlInicio(`«${archivo.name}» no parece una planilla Excel (.xlsx o .xlsb).`);
+    return;
+  }
+  if (WEB && /\.(xlsb|xls)$/i.test(archivo.name)) {
+    // en el navegador no hay LibreOffice para convertirla
+    volverAlInicio(`«${archivo.name}» es un .xlsb o .xls, y la versión web solo abre .xlsx. Ábrelo en Excel → Archivo → Guardar como → «Libro de Excel (.xlsx)» y súbelo de nuevo.`);
     return;
   }
   mostrarProgreso(archivo.name);
@@ -884,15 +899,27 @@ function renderFinal(r) {
       ].join("")
     : `<li><span class="msg">No se generó planilla corregida.</span></li>`;
   const base = `/api/sesiones/${E.sesion}`;
+  const acciones = (f) =>
+    WEB
+      ? `<button class="btn-sec" data-descargar="${base}/archivos/${encodeURIComponent(f.nombre)}">Descargar</button>`
+      : `<button class="btn-sec" data-abrir="${esc(f.nombre)}">Abrir</button>
+        <a class="btn-fantasma" href="${base}/archivos/${encodeURIComponent(f.nombre)}" download title="Guardar una copia en Descargas">Copia</a>`;
   $("#f-archivos").innerHTML = res.archivos
     .map(
       (f) => `<div class="archivo"><span class="archivo-icono">${esc(f.nombre.split(".").pop().toUpperCase())}</span>
         <div><b>${esc(f.nombre)}</b><small>${esc(f.descripcion)} · ${fmt(f.bytes / 1024)} KB</small></div>
-        <button class="btn-sec" data-abrir="${esc(f.nombre)}">Abrir</button>
-        <a class="btn-fantasma" href="${base}/archivos/${encodeURIComponent(f.nombre)}" download title="Guardar una copia en Descargas">Copia</a></div>`
+        ${acciones(f)}</div>`
     )
     .join("");
-  $("#btn-zip").href = `${base}/zip`;
+  $("#btn-zip").href = WEB ? "#" : `${base}/zip`;
+  $("#btn-zip").dataset.descargar = WEB ? `${base}/zip` : "";
+  $$("[data-descargar]").forEach((b) => {
+    if (!b.dataset.descargar) return;
+    b.onclick = (ev) => {
+      ev.preventDefault();
+      WEB.descargar(b.dataset.descargar).catch((e) => aviso(e.message, true));
+    };
+  });
   $$("#f-archivos [data-abrir]").forEach((b) =>
     b.addEventListener("click", async () => {
       try {
@@ -903,7 +930,9 @@ function renderFinal(r) {
       }
     })
   );
-  $("#f-carpeta").textContent = `Guardados también en: ${r.carpeta}`;
+  $("#f-carpeta").textContent = WEB
+    ? "También quedan guardados en este navegador: los encuentras en «Revisiones recientes»."
+    : `Guardados también en: ${r.carpeta}`;
 }
 
 async function abrirCarpeta() {

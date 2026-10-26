@@ -26,7 +26,7 @@
       <li data-paso="revision"><span>2</span> Revisar</li>
       <li data-paso="final"><span>3</span> Descargar</li>
     </ol>
-    <button class="btn-fantasma" id="btn-salir" title="Cerrar el programa">
+    <button class="btn-fantasma solo-escritorio" id="btn-salir" title="Cerrar el programa">
       <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M12 3v8M6.3 6.3a8 8 0 1 0 11.4 0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
       Cerrar
     </button>
@@ -62,13 +62,14 @@
           </svg>
           <div class="zona-titulo">Arrastra aquí la planilla XPE</div>
           <div class="zona-sub">o haz clic para elegirla</div>
-          <div class="zona-formatos"><span>.xlsx</span><span>.xlsb</span><span>.xlsm</span></div>
+          <div class="zona-formatos"><span>.xlsx</span><span class="solo-escritorio">.xlsb</span><span>.xlsm</span></div>
+          <div class="zona-nota solo-web">¿Es un .xlsb? Ábrelo en Excel y guárdalo como .xlsx.</div>
         </label>
 
         <div class="tile tile-motor borde-animado">
           <div class="motor-cabecera"><span class="pulso" aria-hidden="true"></span>MOTOR DE REGLAS</div>
           <b>46 revisiones · 100% local</b>
-          <p>Sin internet: la planilla nunca sale de tu PC.</p>
+          <p>La planilla se revisa en tu computador: nunca se sube a internet.</p>
         </div>
 
         <button class="tile tile-boton" id="btn-ejemplo">
@@ -200,7 +201,7 @@
           <div class="archivos-cabecera">
             <div class="tile-etiqueta">ARCHIVOS</div>
             <div class="botones">
-              <button class="btn" id="btn-carpeta">Abrir carpeta</button>
+              <button class="btn solo-escritorio" id="btn-carpeta">Abrir carpeta</button>
               <a class="btn-sec" id="btn-zip" title="Guardar todo en un .zip en Descargas">Todo en .zip</a>
             </div>
           </div>

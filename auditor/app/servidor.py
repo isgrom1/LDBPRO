@@ -22,6 +22,7 @@ import threading
 import time
 import traceback
 import zipfile
+from dataclasses import dataclass
 from datetime import date, datetime
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -275,6 +276,12 @@ class Aplicacion:
         # Modo ventana propia (pywebview) o navegador; lo fija el lanzador.
         self.escritorio = False
         self.al_mostrar = None  # función que trae la ventana al frente
+        # Versión web (Pyodide, sin hilos): el análisis y la generación quedan en cola y los
+        # ejecuta ejecutar_pendientes(); al_avanzar(sesión) avisa cada paso para mostrar el avance.
+        self.web = False
+        self.hilos = True
+        self.pendientes: list = []
+        self.al_avanzar = None
 
     # -------------------------------------------------------------- sesiones
     def _sesion_previa(self, sha256: str) -> Path | None:
@@ -314,16 +321,38 @@ class Aplicacion:
         s.excluir = d.get("excluir_del_analisis")
         return self._iniciar(s)
 
+    def _en_segundo_plano(self, funcion, s: SesionApp) -> None:
+        if self.hilos:
+            threading.Thread(target=funcion, args=(s,), daemon=True).start()
+        else:
+            self.pendientes.append((funcion, s))
+
+    def ejecutar_pendientes(self) -> bool:
+        """Sin hilos: ejecuta el análisis o la generación que quedó en cola. True si hubo trabajo."""
+        hubo = bool(self.pendientes)
+        while self.pendientes:
+            funcion, s = self.pendientes.pop(0)
+            funcion(s)
+        return hubo
+
+    def _avisar(self, s: SesionApp) -> None:
+        if self.al_avanzar:
+            try:
+                self.al_avanzar(s)
+            except Exception:
+                traceback.print_exc()
+
     def _iniciar(self, s: SesionApp) -> SesionApp:
         with self.lock:
             self.sesiones[s.id] = s
-        threading.Thread(target=self._analizar, args=(s,), daemon=True).start()
+        self._en_segundo_plano(self._analizar, s)
         return s
 
     def _analizar(self, s: SesionApp) -> None:
         def paso(m: str):
             with s.lock:
                 s.pasos.append(m)
+            self._avisar(s)
         try:
             a = analizar(s.ruta, self.config, s.carpeta / "original", paso)
             with s.lock:
@@ -339,18 +368,20 @@ class Aplicacion:
             traceback.print_exc()
             with s.lock:
                 s.estado, s.error = "error", _mensaje_error(exc)
+        self._avisar(s)
 
     def generar(self, s: SesionApp) -> None:
         with s.lock:
             if s.estado in ("analizando", "generando"):
                 raise ValueError("La sesión está ocupada")
             s.estado, s.pasos = "generando", []
-        threading.Thread(target=self._generar, args=(s,), daemon=True).start()
+        self._en_segundo_plano(self._generar, s)
 
     def _generar(self, s: SesionApp) -> None:
         def paso(m: str):
             with s.lock:
                 s.pasos.append(m)
+            self._avisar(s)
         try:
             r = generar(s.analisis, s.carpeta, dict(s.decisiones), con_libreoffice=self.con_libreoffice,
                         informar=paso, excluir=s.excluir)
@@ -362,6 +393,7 @@ class Aplicacion:
             traceback.print_exc()
             with s.lock:
                 s.estado, s.error = "listo", _mensaje_error(exc)
+        self._avisar(s)
 
     def recientes(self, n: int = 8) -> list[dict]:
         out = []
@@ -402,6 +434,156 @@ def abrir_en_explorador(ruta: Path) -> bool:
         return False
 
 
+@dataclass
+class Respuesta:
+    estado: int
+    cuerpo: bytes
+    tipo: str = "application/json; charset=utf-8"
+    descarga: str | None = None  # nombre del archivo si se descarga
+
+
+def _respuesta_json(datos, estado=HTTPStatus.OK) -> Respuesta:
+    return Respuesta(int(estado), json.dumps(datos, ensure_ascii=False, default=str).encode("utf-8"))
+
+
+def _respuesta_error(mensaje: str, estado=HTTPStatus.BAD_REQUEST) -> Respuesta:
+    return _respuesta_json({"error": mensaje}, estado)
+
+
+def atender(app: Aplicacion, metodo: str, ruta: str, cabeceras, cuerpo: bytes = b"") -> Respuesta:
+    """Rutas /api/… compartidas por el servidor local y la versión web (Pyodide).
+
+    No sabe de sockets: recibe el pedido y devuelve la respuesta. La seguridad del servidor
+    local (Host, X-Auditor) se revisa antes, en el manejador HTTP.
+    """
+    url = urlparse(ruta)
+    partes = [unquote(p) for p in url.path.strip("/").split("/") if p]
+    try:
+        if metodo == "GET":
+            return _consultar(app, partes, url.query)
+        return _modificar(app, metodo, partes, cabeceras, cuerpo)
+    except ErrorDecision as exc:
+        return _respuesta_error(str(exc))
+    except Exception as exc:
+        traceback.print_exc()
+        return _respuesta_error(_mensaje_error(exc), HTTPStatus.INTERNAL_SERVER_ERROR)
+
+
+def _sesion_o_error(app: Aplicacion, id_: str) -> tuple[SesionApp | None, Respuesta | None]:
+    s = app.sesiones.get(id_)
+    if s is None:
+        return None, _respuesta_error("La sesión ya no existe: vuelve a abrir la planilla", HTTPStatus.NOT_FOUND)
+    return s, None
+
+
+def _consultar(app: Aplicacion, partes: list[str], consulta: str) -> Respuesta:
+    if partes == ["api", "info"]:
+        return _respuesta_json({
+            "app": "Auditor XPE", "version": __version__, "escritorio": app.escritorio, "web": app.web,
+            "carpeta": str(app.carpeta_base), "libreoffice": bool(soffice_disponible()),
+        })
+    if partes == ["api", "recientes"]:
+        return _respuesta_json(app.recientes())
+    if len(partes) >= 3 and partes[:2] == ["api", "sesiones"]:
+        s, error = _sesion_o_error(app, partes[2])
+        if error:
+            return error
+        if len(partes) == 3:
+            return _respuesta_json(s.resumen(con_datos="datos=1" in consulta))
+        if partes[3] == "proyeccion":
+            if s.analisis is None:
+                return _respuesta_error("Todavía se está analizando")
+            return _respuesta_json(s.proyeccion())
+        if partes[3] == "zip" and s.resultado:
+            buf = io.BytesIO()
+            with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+                for ruta in s.resultado.archivos.values():
+                    if ruta.exists():
+                        z.write(ruta, ruta.name)
+            return Respuesta(200, buf.getvalue(), "application/zip", f"auditoria_{s.analisis.nombre}.zip")
+        if partes[3] == "archivos" and len(partes) == 5 and s.resultado:
+            ruta = next((r for r in s.resultado.archivos.values() if r.name == partes[4]), None)
+            if ruta and ruta.exists():
+                tipo = mimetypes.guess_type(ruta.name)[0] or "application/octet-stream"
+                return Respuesta(200, ruta.read_bytes(), tipo, ruta.name)
+    return _respuesta_error("No existe", HTTPStatus.NOT_FOUND)
+
+
+def _modificar(app: Aplicacion, metodo: str, partes: list[str], cabeceras, cuerpo: bytes) -> Respuesta:
+    def leer_json() -> dict:
+        return json.loads(cuerpo.decode("utf-8")) if cuerpo else {}
+
+    if metodo == "POST" and partes == ["api", "ping"]:
+        app.ultimo_ping = time.monotonic()
+        return _respuesta_json({"ok": True})
+    if metodo == "POST" and partes == ["api", "salir"]:
+        app.cerrar.set()
+        return _respuesta_json({"ok": True})
+    if metodo == "POST" and partes == ["api", "mostrar"]:  # otra copia del programa pide el frente
+        if app.al_mostrar:
+            app.al_mostrar()
+        return _respuesta_json({"ok": True})
+    if metodo == "POST" and partes == ["api", "abrir-carpeta"]:
+        return _respuesta_json({"ok": abrir_en_explorador(app.carpeta_base)})
+    if metodo == "POST" and partes == ["api", "auditar"]:
+        nombre = unquote(cabeceras.get("X-Archivo") or "planilla.xlsx")
+        if not cuerpo:
+            return _respuesta_error("No llegó ningún archivo")
+        return _respuesta_json(app.nueva_sesion(nombre, cuerpo).resumen())
+    if metodo == "POST" and partes == ["api", "ejemplo"]:
+        with tempfile.TemporaryDirectory() as tmp:
+            ruta = crear_planilla_demo(Path(tmp) / "planilla_ejemplo.xlsx")
+            return _respuesta_json(app.nueva_sesion(ruta.name, ruta.read_bytes()).resumen())
+    if metodo == "POST" and partes == ["api", "abrir"]:
+        return _respuesta_json(app.abrir_sesion(Path(leer_json()["carpeta"])).resumen())
+    if len(partes) >= 4 and partes[:2] == ["api", "sesiones"]:
+        s, error = _sesion_o_error(app, partes[2])
+        if error:
+            return error
+        accion = partes[3]
+        if metodo == "POST" and accion == "generar":
+            app.generar(s)
+            return _respuesta_json(s.resumen())
+        if metodo == "POST" and accion == "abrir-carpeta":
+            return _respuesta_json({"ok": abrir_en_explorador(s.carpeta)})
+        if metodo == "POST" and accion == "abrir-archivo" and s.resultado:
+            nombre = leer_json().get("nombre")
+            ruta = next((r for r in s.resultado.archivos.values() if r.name == nombre), None)
+            if ruta is None or not ruta.exists():
+                return _respuesta_error("Ese archivo ya no existe", HTTPStatus.NOT_FOUND)
+            return _respuesta_json({"ok": abrir_en_explorador(ruta)})
+        if metodo == "POST" and accion == "origen" and s.analisis is not None:
+            elegidas = leer_json()
+            if not elegidas or any(g not in GRUPOS_ORIGEN or not isinstance(v, bool) for g, v in elegidas.items()):
+                return _respuesta_error("Elección no válida")
+            with s.lock:
+                s.excluir = exclusiones(s.analisis.config, {**(s.excluir or {}), **elegidas})
+            s.guardar()
+            return _respuesta_json({"ok": True, "excluir": s.excluir})
+        if metodo == "POST" and accion == "reiniciar":
+            with s.lock:
+                s.decisiones.clear()
+                s.version += 1
+                s.restauradas = 0
+            s.guardar()
+            return _respuesta_json({"ok": True})
+        if accion == "decisiones" and len(partes) == 5 and s.analisis is not None:
+            clave = s.ids.get(partes[4])
+            if clave is None:
+                return _respuesta_error("Hallazgo desconocido", HTTPStatus.NOT_FOUND)
+            with s.lock:
+                if metodo == "DELETE":
+                    s.decisiones.pop(clave, None)
+                    d = None
+                else:
+                    d = preparar_decision(s.analisis, s.analisis.por_clave[clave], leer_json())
+                    s.decisiones[clave] = d
+                s.version += 1
+            s.guardar()
+            return _respuesta_json({"ok": True, "decision": SesionApp._decision_json(d) if d else None})
+    return _respuesta_error("No existe", HTTPStatus.NOT_FOUND)
+
+
 class Manejador(BaseHTTPRequestHandler):
     server_version = "AuditorXPE"
     app: Aplicacion  # se asigna al crear el servidor
@@ -414,17 +596,18 @@ class Manejador(BaseHTTPRequestHandler):
         host = (self.headers.get("Host") or "").split(":")[0]
         return host in ("127.0.0.1", "localhost")
 
-    def _json(self, datos, estado=HTTPStatus.OK):
-        cuerpo = json.dumps(datos, ensure_ascii=False, default=str).encode("utf-8")
-        self.send_response(estado)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Content-Length", str(len(cuerpo)))
+    def _enviar(self, r: Respuesta):
+        self.send_response(r.estado)
+        self.send_header("Content-Type", r.tipo)
+        self.send_header("Content-Length", str(len(r.cuerpo)))
+        if r.descarga:
+            self.send_header("Content-Disposition", f"attachment; filename*=UTF-8''{quote(r.descarga)}")
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
-        self.wfile.write(cuerpo)
+        self.wfile.write(r.cuerpo)
 
     def _error(self, mensaje: str, estado=HTTPStatus.BAD_REQUEST):
-        self._json({"error": mensaje}, estado)
+        self._enviar(_respuesta_error(mensaje, estado))
 
     def _leer_cuerpo(self) -> bytes:
         n = int(self.headers.get("Content-Length") or 0)
@@ -432,28 +615,18 @@ class Manejador(BaseHTTPRequestHandler):
             raise ValueError("El archivo es demasiado grande")
         return self.rfile.read(n) if n else b""
 
-    def _leer_json(self) -> dict:
-        cuerpo = self._leer_cuerpo()
-        return json.loads(cuerpo.decode("utf-8")) if cuerpo else {}
+    def _archivo(self, ruta: Path, tipo: str | None = None):
+        self._enviar(Respuesta(200, ruta.read_bytes(), tipo or mimetypes.guess_type(ruta.name)[0] or "application/octet-stream"))
 
-    def _archivo(self, ruta: Path, descarga: str | None = None, tipo: str | None = None):
-        self._bytes(ruta.read_bytes(), tipo or mimetypes.guess_type(ruta.name)[0], descarga)
-
-    def _bytes(self, datos: bytes, tipo: str | None, descarga: str | None = None):
-        self.send_response(HTTPStatus.OK)
-        self.send_header("Content-Type", tipo or "application/octet-stream")
-        self.send_header("Content-Length", str(len(datos)))
-        if descarga:
-            self.send_header("Content-Disposition", f"attachment; filename*=UTF-8''{quote(descarga)}")
-        self.send_header("Cache-Control", "no-store")
-        self.end_headers()
-        self.wfile.write(datos)
-
-    def _sesion(self, id_: str) -> SesionApp | None:
-        s = self.app.sesiones.get(id_)
-        if s is None:
-            self._error("La sesión ya no existe: vuelve a abrir la planilla", HTTPStatus.NOT_FOUND)
-        return s
+    def _api(self, metodo: str):
+        try:
+            cuerpo = b"" if metodo == "GET" else self._leer_cuerpo()
+        except ValueError as exc:
+            return self._error(str(exc))
+        try:
+            self._enviar(atender(self.app, metodo, self.path, self.headers, cuerpo))
+        except (BrokenPipeError, ConnectionResetError):
+            pass
 
     # -------------------------------------------------------------- GET
     def do_GET(self):
@@ -470,122 +643,15 @@ class Manejador(BaseHTTPRequestHandler):
                 tipos = {".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
                          ".svg": "image/svg+xml", ".woff2": "font/woff2", ".txt": "text/plain; charset=utf-8"}
                 return self._archivo(ruta, tipo=tipos.get(ruta.suffix))
-            if partes == ["api", "info"]:
-                return self._json({"app": "Auditor XPE", "version": __version__, "escritorio": self.app.escritorio,
-                                   "carpeta": str(self.app.carpeta_base), "libreoffice": bool(soffice_disponible())})
-            if partes == ["api", "recientes"]:
-                return self._json(self.app.recientes())
-            if len(partes) >= 3 and partes[:2] == ["api", "sesiones"]:
-                s = self._sesion(partes[2])
-                if s is None:
-                    return None
-                if len(partes) == 3:
-                    return self._json(s.resumen(con_datos="datos=1" in urlparse(self.path).query))
-                if partes[3] == "proyeccion":
-                    if s.analisis is None:
-                        return self._error("Todavía se está analizando")
-                    return self._json(s.proyeccion())
-                if partes[3] == "zip" and s.resultado:
-                    buf = io.BytesIO()
-                    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
-                        for ruta in s.resultado.archivos.values():
-                            if ruta.exists():
-                                z.write(ruta, ruta.name)
-                    return self._bytes(buf.getvalue(), "application/zip", f"auditoria_{s.analisis.nombre}.zip")
-                if partes[3] == "archivos" and len(partes) == 5 and s.resultado:
-                    ruta = next((r for r in s.resultado.archivos.values() if r.name == partes[4]), None)
-                    if ruta and ruta.exists():
-                        return self._archivo(ruta, ruta.name)
-            return self._error("No existe", HTTPStatus.NOT_FOUND)
         except (BrokenPipeError, ConnectionResetError):
             return None
-        except Exception as exc:
-            traceback.print_exc()
-            return self._error(_mensaje_error(exc), HTTPStatus.INTERNAL_SERVER_ERROR)
+        return self._api("GET")
 
     # -------------------------------------------------------------- POST / PUT / DELETE
     def _modificar(self, metodo: str):
         if not self._host_valido() or self.headers.get("X-Auditor") != "1":
             return self._error("Pedido no permitido", HTTPStatus.FORBIDDEN)
-        partes = [unquote(p) for p in urlparse(self.path).path.strip("/").split("/") if p]
-        try:
-            if metodo == "POST" and partes == ["api", "ping"]:
-                self.app.ultimo_ping = time.monotonic()
-                return self._json({"ok": True})
-            if metodo == "POST" and partes == ["api", "salir"]:
-                self.app.cerrar.set()
-                return self._json({"ok": True})
-            if metodo == "POST" and partes == ["api", "mostrar"]:  # otra copia del programa pide el frente
-                if self.app.al_mostrar:
-                    self.app.al_mostrar()
-                return self._json({"ok": True})
-            if metodo == "POST" and partes == ["api", "abrir-carpeta"]:
-                return self._json({"ok": abrir_en_explorador(self.app.carpeta_base)})
-            if metodo == "POST" and partes == ["api", "auditar"]:
-                nombre = unquote(self.headers.get("X-Archivo") or "planilla.xlsx")
-                contenido = self._leer_cuerpo()
-                if not contenido:
-                    return self._error("No llegó ningún archivo")
-                return self._json(self.app.nueva_sesion(nombre, contenido).resumen())
-            if metodo == "POST" and partes == ["api", "ejemplo"]:
-                with tempfile.TemporaryDirectory() as tmp:
-                    ruta = crear_planilla_demo(Path(tmp) / "planilla_ejemplo.xlsx")
-                    return self._json(self.app.nueva_sesion(ruta.name, ruta.read_bytes()).resumen())
-            if metodo == "POST" and partes == ["api", "abrir"]:
-                return self._json(self.app.abrir_sesion(Path(self._leer_json()["carpeta"])).resumen())
-            if len(partes) >= 4 and partes[:2] == ["api", "sesiones"]:
-                s = self._sesion(partes[2])
-                if s is None:
-                    return None
-                accion = partes[3]
-                if metodo == "POST" and accion == "generar":
-                    self.app.generar(s)
-                    return self._json(s.resumen())
-                if metodo == "POST" and accion == "abrir-carpeta":
-                    return self._json({"ok": abrir_en_explorador(s.carpeta)})
-                if metodo == "POST" and accion == "abrir-archivo" and s.resultado:
-                    nombre = self._leer_json().get("nombre")
-                    ruta = next((r for r in s.resultado.archivos.values() if r.name == nombre), None)
-                    if ruta is None or not ruta.exists():
-                        return self._error("Ese archivo ya no existe", HTTPStatus.NOT_FOUND)
-                    return self._json({"ok": abrir_en_explorador(ruta)})
-                if metodo == "POST" and accion == "origen" and s.analisis is not None:
-                    elegidas = self._leer_json()
-                    if not elegidas or any(g not in GRUPOS_ORIGEN or not isinstance(v, bool) for g, v in elegidas.items()):
-                        return self._error("Elección no válida")
-                    with s.lock:
-                        s.excluir = exclusiones(s.analisis.config, {**(s.excluir or {}), **elegidas})
-                    s.guardar()
-                    return self._json({"ok": True, "excluir": s.excluir})
-                if metodo == "POST" and accion == "reiniciar":
-                    with s.lock:
-                        s.decisiones.clear()
-                        s.version += 1
-                        s.restauradas = 0
-                    s.guardar()
-                    return self._json({"ok": True})
-                if accion == "decisiones" and len(partes) == 5 and s.analisis is not None:
-                    clave = s.ids.get(partes[4])
-                    if clave is None:
-                        return self._error("Hallazgo desconocido", HTTPStatus.NOT_FOUND)
-                    with s.lock:
-                        if metodo == "DELETE":
-                            s.decisiones.pop(clave, None)
-                            d = None
-                        else:
-                            d = preparar_decision(s.analisis, s.analisis.por_clave[clave], self._leer_json())
-                            s.decisiones[clave] = d
-                        s.version += 1
-                    s.guardar()
-                    return self._json({"ok": True, "decision": SesionApp._decision_json(d) if d else None})
-            return self._error("No existe", HTTPStatus.NOT_FOUND)
-        except ErrorDecision as exc:
-            return self._error(str(exc))
-        except (BrokenPipeError, ConnectionResetError):
-            return None
-        except Exception as exc:
-            traceback.print_exc()
-            return self._error(_mensaje_error(exc), HTTPStatus.INTERNAL_SERVER_ERROR)
+        return self._api(metodo)
 
     def do_POST(self):
         return self._modificar("POST")

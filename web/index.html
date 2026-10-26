@@ -1,0 +1,243 @@
+<!doctype html>
+<!-- Generado por empaquetado/construir_web.py a partir de auditor/app/static/index.html: no editar. -->
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Auditor XPE</title>
+  <link rel="icon" href="../auditor/app/static/icono.svg" type="image/svg+xml">
+  <link rel="preload" href="../auditor/app/static/jetbrains-mono-400.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="../auditor/app/static/app.css">
+</head>
+<body>
+  <!-- Línea de progreso global: solo mientras se analiza o se genera -->
+  <div id="progreso-global" class="progreso-global" hidden><div></div></div>
+
+  <header class="barra">
+    <div class="marca">
+      <img src="../auditor/app/static/icono.svg" alt="" width="30" height="30">
+      <div>
+        <strong>Auditor XPE</strong>
+        <span>Planillas de fauna · LdB SEIA</span>
+      </div>
+    </div>
+    <ol class="pasos" aria-label="Pasos">
+      <li data-paso="inicio"><span>1</span> Subir</li>
+      <li data-paso="revision"><span>2</span> Revisar</li>
+      <li data-paso="final"><span>3</span> Descargar</li>
+    </ol>
+    <button class="btn-fantasma solo-escritorio" id="btn-salir" title="Cerrar el programa">
+      <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M12 3v8M6.3 6.3a8 8 0 1 0 11.4 0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      Cerrar
+    </button>
+  </header>
+
+  <main>
+    <!-- 1. Subir -->
+    <section id="vista-inicio" class="vista">
+      <div class="heroe">
+        <h1>Revisa tu planilla de fauna antes de analizarla</h1>
+        <p>Encuentra los errores que arruinan índices de diversidad, densidades y curvas de acumulación.
+          Tu archivo original <strong>nunca se modifica</strong>: se crea una copia corregida.</p>
+      </div>
+
+      <div class="bento bento-inicio">
+        <label id="zona-carga" class="zona-carga" tabindex="0">
+          <input type="file" id="archivo" accept=".xlsx,.xlsb,.xls,.xlsm" hidden>
+          <svg class="zona-icono" viewBox="0 0 96 96" width="96" height="96" aria-hidden="true">
+            <defs>
+              <linearGradient id="zona-brillo" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="currentColor" stop-opacity="0"/>
+                <stop offset=".5" stop-color="currentColor" stop-opacity=".9"/>
+                <stop offset="1" stop-color="currentColor" stop-opacity="0"/>
+              </linearGradient>
+            </defs>
+            <rect class="zona-halo" x="6" y="6" width="84" height="84" rx="24"/>
+            <path class="zona-hoja" d="M31 18h24l14 14v42a4 4 0 0 1-4 4H31a4 4 0 0 1-4-4V22a4 4 0 0 1 4-4z"/>
+            <path class="zona-hoja" d="M55 18v14h14"/>
+            <path class="zona-grilla" d="M34 42h28M34 51h28M34 60h28M45 42v27"/>
+            <rect class="zona-escaner" x="30" y="36" width="36" height="2" fill="url(#zona-brillo)"/>
+            <circle class="zona-flecha-fondo" cx="68" cy="70" r="13"/>
+            <path class="zona-flecha" d="M68 77V63m-6 6 6-6 6 6"/>
+          </svg>
+          <div class="zona-titulo">Arrastra aquí la planilla XPE</div>
+          <div class="zona-sub">o haz clic para elegirla</div>
+          <div class="zona-formatos"><span>.xlsx</span><span class="solo-escritorio">.xlsb</span><span>.xlsm</span></div>
+          <div class="zona-nota solo-web">¿Es un .xlsb? Ábrelo en Excel y guárdalo como .xlsx.</div>
+        </label>
+
+        <div class="tile tile-motor borde-animado">
+          <div class="motor-cabecera"><span class="pulso" aria-hidden="true"></span>MOTOR DE REGLAS</div>
+          <b>46 revisiones · 100% local</b>
+          <p>La planilla se revisa en tu computador: nunca se sube a internet.</p>
+        </div>
+
+        <button class="tile tile-boton" id="btn-ejemplo">
+          <span class="tile-etiqueta">DEMO</span>
+          <b>Probar con una planilla de ejemplo</b>
+          <span class="tenue">Datos ficticios, para ver cómo funciona →</span>
+        </button>
+
+        <div class="tile rasgo rasgo-1">
+          <span class="rasgo-icono" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5M8.5 11h5M11 8.5v5"/></svg></span>
+          <strong>46 revisiones</strong>
+          <p>Coordenadas, transectos, nombres, abundancias, horarios, duplicados…</p>
+        </div>
+        <div class="tile rasgo rasgo-2">
+          <span class="rasgo-icono" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3 5 6v5.5c0 4.2 2.9 8 7 9.5 4.1-1.5 7-5.3 7-9.5V6z"/><path d="m9 12 2.2 2.2L15.5 10"/></svg></span>
+          <strong>Corrige solo lo seguro</strong>
+          <p>Espacios invisibles, mayúsculas, «Si» → 1. El resto lo decides tú.</p>
+        </div>
+        <div class="tile rasgo rasgo-3">
+          <span class="rasgo-icono" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3.5" y="4" width="17" height="16" rx="2.5"/><path d="M3.5 9.5h17M9.5 9.5V20"/><path d="m13 16 2-2.5 2 1.5 2-3"/></svg></span>
+          <strong>Lista para R y PAST</strong>
+          <p>Planilla corregida, informe y base larga con las uniones rehechas.</p>
+        </div>
+        <div class="tile tile-carpeta">
+          <span class="tile-etiqueta">RESULTADOS</span>
+          <p class="pie" id="pie-info"></p>
+        </div>
+
+        <div id="recientes" class="tile recientes" hidden>
+          <div class="tile-etiqueta">REVISIONES RECIENTES</div>
+          <div id="lista-recientes" class="lista-recientes"></div>
+        </div>
+      </div>
+      <div id="error-inicio" class="alerta alerta-error" hidden></div>
+    </section>
+
+    <!-- Monitor de análisis -->
+    <section id="vista-progreso" class="vista" hidden>
+      <div class="monitor borde-animado">
+        <div class="monitor-cabecera">
+          <span class="pulso pulso-azul" aria-hidden="true"></span>
+          <h2 id="progreso-titulo">Revisando la planilla…</h2>
+          <span id="progreso-archivo" class="monitor-archivo"></span>
+        </div>
+        <div class="linea-progreso"><div id="progreso-barra"></div></div>
+        <ol id="progreso-pasos" class="consola" aria-live="polite"></ol>
+      </div>
+    </section>
+
+    <!-- 2. Revisar -->
+    <section id="vista-revision" class="vista" hidden>
+      <div class="revision">
+        <aside class="lateral">
+          <div class="tarjeta archivo-tarjeta">
+            <div class="tile-etiqueta">PLANILLA</div>
+            <div class="archivo-nombre" id="r-archivo"></div>
+            <div class="tenue" id="r-resumen"></div>
+            <button class="enlace" id="btn-otra">Revisar otra planilla</button>
+          </div>
+          <div class="tarjeta puntaje-tarjeta">
+            <div class="tile-etiqueta">ÍNDICE DE CALIDAD</div>
+            <div class="anillo" id="r-anillo"></div>
+            <div class="estado" id="r-estado"></div>
+            <div class="comparacion" id="r-comparacion"></div>
+            <div class="barras" id="r-barras"></div>
+            <details class="formula">
+              <summary>¿Cómo se calcula?</summary>
+              <p>Índice = 70% × registros limpios + 30% × estaciones limpias − 2 por cada tipo de error crítico.
+                Un registro o estación está «limpio» si no tiene problemas críticos ni advertencias. Lo que marques
+                «está bien así» no resta.</p>
+              <p>✅ <b>Lista</b>: sin críticos ni advertencias · ⚠️ <b>Usable con revisión</b>: sin críticos · ❌ <b>No usar</b>: hay críticos.</p>
+            </details>
+          </div>
+          <div class="tarjeta">
+            <div class="tile-etiqueta">INDICADORES</div>
+            <div id="r-indicadores"></div>
+          </div>
+        </aside>
+
+        <div class="principal">
+          <div id="r-avisos"></div>
+          <div class="herramientas">
+            <div class="pestanas" id="r-pestanas" role="tablist"></div>
+            <div class="filtros">
+              <div class="segmentado" id="r-agrupar">
+                <button data-agrupar="estacion" class="activo">Por estación</button>
+                <button data-agrupar="regla">Por tipo de problema</button>
+              </div>
+              <div class="chips" id="r-niveles"></div>
+              <div class="buscador">
+                <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="m16 16 4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+                <input type="search" id="r-buscar" placeholder="Buscar estación, especie, celda…" aria-label="Buscar">
+              </div>
+            </div>
+          </div>
+          <div id="r-lista" class="lista"></div>
+        </div>
+      </div>
+      <div class="barra-accion">
+        <div id="r-barra-texto"></div>
+        <button class="btn" id="btn-generar">Generar planilla corregida
+          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+    </section>
+
+    <!-- 3. Descargar -->
+    <section id="vista-final" class="vista" hidden>
+      <div class="bento bento-final">
+        <div class="tarjeta final-cabecera">
+          <div class="final-icono" aria-hidden="true">
+            <svg viewBox="0 0 48 48" width="48" height="48"><circle cx="24" cy="24" r="20"/><path d="m15.5 24.5 6 6 11-12"/></svg>
+          </div>
+          <div>
+            <h1>Planilla corregida lista</h1>
+            <p class="tenue" id="f-subtitulo"></p>
+          </div>
+        </div>
+        <div class="tarjeta final-puntaje">
+          <div class="tile-etiqueta">PUNTAJE</div>
+          <div id="f-puntaje" class="f-puntaje"></div>
+          <div id="f-pendientes"></div>
+        </div>
+        <div class="tarjeta final-verificacion">
+          <div class="tile-etiqueta">VERIFICACIÓN DEL ARCHIVO CORREGIDO</div>
+          <ul id="f-verificacion" class="verificacion consola"></ul>
+        </div>
+        <div class="tarjeta final-archivos">
+          <div class="archivos-cabecera">
+            <div class="tile-etiqueta">ARCHIVOS</div>
+            <div class="botones">
+              <button class="btn solo-escritorio" id="btn-carpeta">Abrir carpeta</button>
+              <a class="btn-sec" id="btn-zip" title="Guardar todo en un .zip en Descargas">Todo en .zip</a>
+            </div>
+          </div>
+          <div id="f-archivos" class="archivos"></div>
+          <p class="tenue" id="f-carpeta"></p>
+        </div>
+      </div>
+      <div class="botones centrado">
+        <button class="btn-sec" id="btn-volver">← Volver a la revisión</button>
+        <button class="btn-sec" id="btn-otra-final">Revisar otra planilla</button>
+      </div>
+    </section>
+
+    <section id="vista-cerrado" class="vista" hidden>
+      <div class="tarjeta cerrado">
+        <div class="tile-etiqueta">SESIÓN TERMINADA</div>
+        <h2>El Auditor XPE se cerró</h2>
+        <p class="tenue">Ya puedes cerrar esta ventana. Tus decisiones quedaron guardadas.</p>
+      </div>
+    </section>
+  </main>
+
+  <div id="modal" class="modal" hidden>
+    <div class="monitor modal-caja borde-animado">
+      <div class="monitor-cabecera">
+        <span class="pulso pulso-azul" aria-hidden="true"></span>
+        <h2 id="modal-titulo">Generando…</h2>
+      </div>
+      <div class="linea-progreso"><div id="modal-barra"></div></div>
+      <ol id="modal-pasos" class="consola"></ol>
+    </div>
+  </div>
+  <div id="avisos" class="avisos" aria-live="polite"></div>
+  <datalist id="dl-especies"></datalist>
+  <script src="motor.js"></script>
+  <script src="../auditor/app/static/app.js"></script>
+</body>
+</html>

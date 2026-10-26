@@ -1,0 +1,28 @@
+{
+ "archivos": [
+  "auditor/__init__.py",
+  "auditor/app/__init__.py",
+  "auditor/app/lanzador.py",
+  "auditor/app/servidor.py",
+  "auditor/app/web.py",
+  "auditor/cli.py",
+  "auditor/config.py",
+  "auditor/contexto.py",
+  "auditor/demo.py",
+  "auditor/formato.py",
+  "auditor/hallazgos.py",
+  "auditor/modelo.py",
+  "auditor/motor.py",
+  "auditor/reglas/__init__.py",
+  "auditor/reglas/estaciones.py",
+  "auditor/reglas/plantilla.py",
+  "auditor/reglas/registros.py",
+  "auditor/reportes.py",
+  "auditor/revision.py",
+  "auditor/sesion.py",
+  "auditor/texto.py",
+  "auditor/verificacion.py",
+  "auditor/xlsx_xml.py",
+  "config.yaml"
+ ]
+}
