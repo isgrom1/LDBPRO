@@ -28,7 +28,7 @@
       tile.querySelector("p").textContent = texto;
     } else if (avance >= 1) {
       tile.querySelector("b").textContent = "46 revisiones · en tu navegador";
-      tile.querySelector("p").textContent = "La planilla se revisa en tu computador: nunca se sube a internet.";
+      tile.querySelector("p").textContent = "La planilla se revisa en tu propio equipo: nunca se sube a internet.";
     } else {
       tile.querySelector("b").textContent = `Preparando el motor… ${Math.round(avance * 100)}%`;
       tile.querySelector("p").textContent = `${texto} La primera vez tarda un poco; después queda guardado.`;

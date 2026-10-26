@@ -55,6 +55,9 @@ navegador, y los resultados se descargan desde ahí mismo.
   .zip), y los `.xlsb` hay que guardarlos antes como `.xlsx` desde Excel (no hay LibreOffice).
 - Funciona en Edge o Chrome actuales. El análisis de una planilla real toma unos segundos más que
   en el .exe.
+- También abre en el celular (Chrome en Android, Safari en iPhone con iOS 16.4 o más nuevo): se
+  elige la planilla desde Archivos, Drive o las descargas, y los resultados se descargan al
+  teléfono. Para revisar muchas tarjetas, la pantalla del computador es más cómoda.
 
 **Publicarla** (una sola vez): en GitHub, *Settings → Pages → Build and deployment → Source:
 Deploy from a branch*, elegir la rama y la carpeta `/ (root)` y guardar. Cada `git push` a esa
