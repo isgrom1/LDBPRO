@@ -26,7 +26,10 @@ captura:
   distancia_max_m: 300
 
 # R08: especies domésticas. Van en la planilla que se entrega (no se borran), pero la LdB de XPE
-# no las considera en la lista de especies ni en los análisis. Con excluir_del_analisis: true
+# no las considera en la lista de especies ni en los análisis. Un caballo feral o un perro
+# asilvestrado sigue aquí: el Código Civil (art. 608) clasifica por especie y la Ley de Caza
+# (19.473, art. 2) excluye a los domésticos de la fauna silvestre, aunque el catálogo del MMA de
+# exóticas asilvestradas incluya al caballo. Para tratarlos como exóticos, muévelos a «exoticas». Con excluir_del_analisis: true
 # salen con excluir_motivo = 'doméstica' en base_limpia_larga.csv. En la aplicación se puede
 # cambiar por planilla.
 domesticas:

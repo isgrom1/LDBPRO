@@ -332,16 +332,26 @@ def es_exotica(config: dict, especie, nombre, nombre_bd) -> bool:
             and not es_domestica(config, especie, nombre, nombre_bd))
 
 
+# Un animal de especie doméstica que vive libre (caballo feral, perro asilvestrado, ganado cimarrón)
+_ASILVESTRADO = re.compile(r"feral|asilvestrad|cimarr", re.I)
+
+
 @regla("R08", "Especie doméstica", INFO)
 def r08(ctx):
     for t, f, u in ctx.iter_registros():
         if es_domestica(ctx.config, u["especie"], u["nombre"], u["nombre_bd"]):
+            sugerencia = ("No la borres. En base_limpia_larga.csv sale con origen = 'doméstica' y, salvo que elijas "
+                          "incluirla en el análisis, con excluir_motivo = 'doméstica'.")
+            if _ASILVESTRADO.search(f"{u['nombre']} {u['nombre_bd'] or ''}"):
+                sugerencia += (" Aunque viva libre, la especie es doméstica según el Código Civil (art. 608) y la Ley "
+                               "de Caza no la cuenta como fauna silvestre; el catálogo del MMA de exóticas "
+                               "asilvestradas sí la incluye. Si tu proyecto la trata como exótica, muévela de lista "
+                               "en config.yaml.")
             yield ctx.hallazgo(
                 "R08", t, f, "nombre_comun",
                 f"Especie doméstica ({u['especie'] or u['nombre']}): va en la planilla que entregas, pero la LdB "
                 "de XPE no la cuenta en la lista de especies ni en los análisis.",
-                "No la borres. En base_limpia_larga.csv sale con origen = 'doméstica' y, salvo que elijas "
-                "incluirla en el análisis, con excluir_motivo = 'doméstica'.",
+                sugerencia,
             )
 
 

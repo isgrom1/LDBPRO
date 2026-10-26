@@ -61,6 +61,7 @@ def test_nombres(resultado):
 def test_registros(resultado):
     assert celdas(resultado, "R06") == ["AI196"]  # Cururo PMF18 sin abundancia
     assert celdas(resultado, "R08") == ["AD198"]  # Equus caballus PMF17
+    assert "Código Civil (art. 608)" in hallazgos(resultado, "R08")[0].sugerencia  # «Caballo feral»
     assert celdas(resultado, "R10") == ["Z124", "Z196"]
     # Macho y hembra en la misma estación y hora son dos individuos, no un duplicado (filas 172/173)
     assert "AD173" not in celdas(resultado, "R15")

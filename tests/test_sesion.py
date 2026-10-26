@@ -98,6 +98,23 @@ def test_nombre_comun_con_dos_especies(tmp_path):
     assert r27[0].justificaciones == ["Es Zonotrichia capensis"]
 
 
+def test_domestica_asilvestrada(tmp_path):
+    ruta = crear_planilla_demo(tmp_path / "p.xlsx")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        wb = openpyxl.load_workbook(ruta)
+    wb["nombres BD"].append(["Perro asilvestrado", "Canis familiaris", "Animalia", "Chordata", "Mamíferos",
+                             "Carnivora", "Canidae", "Canis"])
+    reg = wb["Registros"]
+    celda = next(c for fila in reg.iter_rows() for c in fila if c.value == "Perro")
+    celda.value = "Perro asilvestrado"
+    wb.save(ruta)
+    a = analizar(ruta, cargar_config(), tmp_path, informar=lambda *x: None)
+    r08 = [h for h in a.antes if h.id_regla == "R08"]
+    assert len(r08) == 1 and "Código Civil (art. 608)" in r08[0].sugerencia
+    assert not [h for h in a.antes if h.id_regla == "R25" and "Canis" in h.problema]
+
+
 def test_acciones_sugeridas(analisis):
     assert [a.etiqueta for a in buscar(analisis, "R06").acciones] == ["Poner P (presencia)", "Poner 1"]
     assert buscar(analisis, "E03", "F6").acciones[0].valor == "Matorral esclerófilo"
